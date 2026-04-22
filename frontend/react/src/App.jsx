@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import Plot from "react-plotly.js";
 import "./App.css";
@@ -95,6 +95,8 @@ export default function App() {
   const [alertLoading, setAlertLoading] = useState(false);
 
   const [stateChecked, setStateChecked] = useState(false);
+  const simRequestRef = useRef(0);
+  const alertRequestRef = useRef(0);
 
   useEffect(() => {
     void bootstrapFromServer();
@@ -111,6 +113,8 @@ export default function App() {
     if (!datasetLoaded || !simCountry || !simCrop) {
       return;
     }
+    setSimContext(null);
+    setSimResult(null);
     void loadScenarioContext(simCountry, simCrop);
   }, [datasetLoaded, simCountry, simCrop]);
 
@@ -125,9 +129,52 @@ export default function App() {
     if (!datasetLoaded || !alertCountry || !alertCrop) {
       return;
     }
-    void runAlerts(alertCountry, alertCrop, ALERT_DEFAULTS);
-    setAlertForm(ALERT_DEFAULTS);
+    setAlertForm({ ...ALERT_DEFAULTS });
+    setAlertResult(null);
   }, [datasetLoaded, alertCountry, alertCrop]);
+
+  useEffect(() => {
+    if (
+      !datasetLoaded ||
+      !simCountry ||
+      !simCrop ||
+      !simContext ||
+      simContext.country !== simCountry ||
+      simContext.crop !== simCrop
+    ) {
+      return;
+    }
+    const timeout = setTimeout(() => {
+      void runSimulation(simCountry, simCrop, simForm);
+    }, 260);
+    return () => clearTimeout(timeout);
+  }, [
+    datasetLoaded,
+    simCountry,
+    simCrop,
+    simContext,
+    simForm.target_year,
+    simForm.rain_variation_pct,
+    simForm.temp_variation_c,
+    simForm.pesticides_variation_pct
+  ]);
+
+  useEffect(() => {
+    if (!datasetLoaded || !alertCountry || !alertCrop) {
+      return;
+    }
+    const timeout = setTimeout(() => {
+      void runAlerts(alertCountry, alertCrop, alertForm);
+    }, 260);
+    return () => clearTimeout(timeout);
+  }, [
+    datasetLoaded,
+    alertCountry,
+    alertCrop,
+    alertForm.rain_variation_pct,
+    alertForm.temp_variation_c,
+    alertForm.pesticides_variation_pct
+  ]);
 
   async function bootstrapFromServer() {
     setError("");
@@ -254,7 +301,6 @@ export default function App() {
         pesticides_variation_pct: 0
       };
       setSimForm(defaultPayload);
-      await runSimulation(country, crop, defaultPayload);
     } catch (err) {
       setSimContext(null);
       setSimResult(null);
@@ -263,6 +309,7 @@ export default function App() {
   }
 
   async function runSimulation(country, crop, payload) {
+    const requestId = ++simRequestRef.current;
     setSimLoading(true);
     setError("");
     try {
@@ -271,16 +318,25 @@ export default function App() {
         crop,
         ...payload
       });
+      if (requestId !== simRequestRef.current) {
+        return;
+      }
       setSimResult(response.data);
     } catch (err) {
+      if (requestId !== simRequestRef.current) {
+        return;
+      }
       setError(err?.response?.data?.detail || err?.message || "Échec de la simulation");
       setSimResult(null);
     } finally {
-      setSimLoading(false);
+      if (requestId === simRequestRef.current) {
+        setSimLoading(false);
+      }
     }
   }
 
   async function runAlerts(country, crop, payload) {
+    const requestId = ++alertRequestRef.current;
     setAlertLoading(true);
     setError("");
     try {
@@ -289,12 +345,20 @@ export default function App() {
         crop,
         ...payload
       });
+      if (requestId !== alertRequestRef.current) {
+        return;
+      }
       setAlertResult(response.data);
     } catch (err) {
+      if (requestId !== alertRequestRef.current) {
+        return;
+      }
       setError(err?.response?.data?.detail || err?.message || "Échec de la génération d'alertes");
       setAlertResult(null);
     } finally {
-      setAlertLoading(false);
+      if (requestId === alertRequestRef.current) {
+        setAlertLoading(false);
+      }
     }
   }
 
@@ -490,6 +554,15 @@ export default function App() {
                     <p className="section-subtext">
                       Ajustez les variables environnementales pour anticiper l'impact sur la production agricole.
                     </p>
+                    <div className="live-row">
+                      <span className={`live-chip ${simLoading ? "is-loading" : "is-ready"}`}>
+                        <span className="icon">{simLoading ? "autorenew" : "bolt"}</span>
+                        {simLoading ? "Recalcul en cours..." : "Recalcul automatique actif"}
+                      </span>
+                      <span className="live-meta">
+                        Les résultats se mettent à jour dès que vous modifiez les curseurs.
+                      </span>
+                    </div>
 
                     <div className="controls-grid two">
                       <SelectField label="Pays ciblé" value={simCountry} onChange={setSimCountry} options={countries} />
@@ -517,13 +590,14 @@ export default function App() {
                           </div>
                         </div>
 
-                        <div className="controls-grid three">
+                        <div className="controls-grid three scenario-sliders">
                           <SliderField
                             title={`Précipitations — Base: ${fmt(simContext.rain_base)} mm`}
                             min={-50}
                             max={50}
                             step={5}
                             value={simForm.rain_variation_pct}
+                            unit="%"
                             onChange={(value) => setSimForm((prev) => ({ ...prev, rain_variation_pct: value }))}
                             caption={`→ ${fmt(simContext.rain_base * (1 + simForm.rain_variation_pct / 100))} mm/an`}
                           />
@@ -533,6 +607,7 @@ export default function App() {
                             max={5}
                             step={0.5}
                             value={simForm.temp_variation_c}
+                            unit="°C"
                             onChange={(value) => setSimForm((prev) => ({ ...prev, temp_variation_c: value }))}
                             caption={`→ ${fmt(simContext.temp_base + simForm.temp_variation_c, 1)} °C`}
                           />
@@ -542,6 +617,7 @@ export default function App() {
                             max={100}
                             step={5}
                             value={simForm.pesticides_variation_pct}
+                            unit="%"
                             onChange={(value) => setSimForm((prev) => ({ ...prev, pesticides_variation_pct: value }))}
                             caption={`→ ${fmt(simContext.pesticides_base * (1 + simForm.pesticides_variation_pct / 100))} tonnes`}
                           />
@@ -549,11 +625,11 @@ export default function App() {
 
                         <button
                           type="button"
-                          className="primary-btn"
+                          className="secondary-btn"
                           onClick={() => runSimulation(simCountry, simCrop, simForm)}
                           disabled={simLoading}
                         >
-                          {simLoading ? "Simulation en cours..." : "Mettre à jour la simulation"}
+                          {simLoading ? "Simulation en cours..." : "Recalculer maintenant (optionnel)"}
                         </button>
                       </>
                     )}
@@ -671,19 +747,29 @@ export default function App() {
                     <h3 className="section-title">
                       <span className="icon">campaign</span> Alertes
                     </h3>
+                    <div className="live-row">
+                      <span className={`live-chip ${alertLoading ? "is-loading" : "is-ready"}`}>
+                        <span className="icon">{alertLoading ? "autorenew" : "bolt"}</span>
+                        {alertLoading ? "Analyse en cours..." : "Analyse automatique active"}
+                      </span>
+                      <span className="live-meta">
+                        Les alertes et recommandations se recalculent automatiquement quand les curseurs changent.
+                      </span>
+                    </div>
 
                     <div className="controls-grid two">
                       <SelectField label="Pays ciblé" value={alertCountry} onChange={setAlertCountry} options={countries} />
                       <SelectField label="Culture ciblée" value={alertCrop} onChange={setAlertCrop} options={alertCrops} />
                     </div>
 
-                    <div className="controls-grid three">
+                    <div className="controls-grid three scenario-sliders">
                       <SliderField
                         title="Pluie (%)"
                         min={-50}
                         max={50}
                         step={5}
                         value={alertForm.rain_variation_pct}
+                        unit="%"
                         onChange={(value) => setAlertForm((prev) => ({ ...prev, rain_variation_pct: value }))}
                       />
                       <SliderField
@@ -692,6 +778,7 @@ export default function App() {
                         max={5}
                         step={0.5}
                         value={alertForm.temp_variation_c}
+                        unit="°C"
                         onChange={(value) => setAlertForm((prev) => ({ ...prev, temp_variation_c: value }))}
                       />
                       <SliderField
@@ -700,22 +787,38 @@ export default function App() {
                         max={100}
                         step={5}
                         value={alertForm.pesticides_variation_pct}
+                        unit="%"
                         onChange={(value) => setAlertForm((prev) => ({ ...prev, pesticides_variation_pct: value }))}
                       />
                     </div>
 
                     <button
                       type="button"
-                      className="primary-btn"
+                      className="secondary-btn"
                       disabled={alertLoading}
                       onClick={() => runAlerts(alertCountry, alertCrop, alertForm)}
                     >
-                      {alertLoading ? "Génération en cours..." : "Actualiser alertes & décisions"}
+                      {alertLoading ? "Analyse en cours..." : "Recalculer maintenant (optionnel)"}
                     </button>
 
                     {alertResult && (
                       <>
                         <hr className="separator" />
+                        <div className="metric-grid four">
+                          <MetricCard label="Historique" value={fmt(alertResult.stats?.rend_historique)} accent="brown" footer="hg/ha" />
+                          <MetricCard label="Projection de base" value={fmt(alertResult.stats?.pred_base)} accent="green" footer="hg/ha" />
+                          <MetricCard
+                            label="Projection scénarisée"
+                            value={fmt(alertResult.stats?.pred_modifie)}
+                            accent={alertResult.stats?.variation_pct >= 0 ? "green" : "orange"}
+                            footer="hg/ha"
+                          />
+                          <MetricCard
+                            label="Variation attendue"
+                            value={`${alertResult.stats?.variation_pct >= 0 ? "+" : ""}${fmt(alertResult.stats?.variation_pct, 1)}%`}
+                            accent={alertResult.stats?.variation_pct >= 0 ? "blue" : "orange"}
+                          />
+                        </div>
                         <div>
                           {(alertResult.alerts || []).map((alert, index) => (
                             <AlertCard key={`${alert.type}-${index}`} alert={alert} />
@@ -820,19 +923,23 @@ function SelectField({ label, value, onChange, options }) {
   );
 }
 
-function SliderField({ title, min, max, step, value, onChange, caption }) {
+function SliderField({ title, min, max, step, value, onChange, caption, unit = "" }) {
+  const progress = max === min ? 0 : ((value - min) / (max - min)) * 100;
+  const valueLabel = `${value > 0 ? "+" : ""}${value}${unit}`;
   return (
     <div className="slider-wrap">
       <p className="slider-title">{title}</p>
       <input
+        className="slider-range"
         type="range"
         min={min}
         max={max}
         step={step}
         value={value}
+        style={{ "--range-progress": `${Math.min(100, Math.max(0, progress))}%` }}
         onChange={(event) => onChange(Number(event.target.value))}
       />
-      <div className="slider-value">{value}</div>
+      <div className={`slider-value ${value < 0 ? "negative" : "positive"}`}>{valueLabel}</div>
       {caption ? <p className="slider-caption">{caption}</p> : null}
     </div>
   );

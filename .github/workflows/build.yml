@@ -1,80 +1,105 @@
-name: Build Angular and Spring Boot Microservices
+name: Build React, Python ML and Spring Boot Microservices
 
 on:
   push:
     branches:
       - main
       - regent
-  pull_request:
-    branches:
+      - develop
       - Develop
-      - main
-
+  pull_request:
+    branches: [main, regent, develop, Develop]
 
 jobs:
-  build-angular:
-    name: Build Angular Application
+  build-react:
+    name: Build React Application
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend/react
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: 18
-
-      - name: Install Angular CLI
-        run: npm install -g @angular/cli@19
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ./frontend/react/package.json
 
       - name: Install Dependencies
-        run: npm install --legacy-peer-deps
-        working-directory: ./frontend/angular
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install --no-audit --no-fund
+          fi
 
-      - name: Build Angular Project
-        run: ng build
-        working-directory: ./frontend/angular
+      - name: Build React Project
+        run: npm run build
+
+  build-ml-python:
+    name: Validate ML Python Service
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend/ml-python
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: ./backend/ml-python/requirements.txt
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate Imports and Syntax
+        run: |
+          python -m compileall app
+          python -c "import fastapi, pandas, numpy, sklearn, xgboost"
 
   build-spring-boot:
     name: Build Spring Boot Microservices
     runs-on: ubuntu-latest
-    needs: build-angular
+    needs: [build-react, build-ml-python]
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - name: discovery-server
+            path: ./backend/discoveryServer
+          - name: config-server
+            path: ./backend/configServer
+          - name: gateway
+            path: ./backend/gateway
+          - name: agri-data
+            path: ./backend/agriData
+          - name: integration
+            path: ./backend/integration
+          - name: decision
+            path: ./backend/decision
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup JDK
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: 21
+          cache: maven
 
-      - name: Build Discovery server
-        run: mvn clean package -Dspring.profiles.active=dev -DskipTests
-        working-directory: ./backend/discoveryServer
-
-      - name: Build Config Server
-        run: mvn clean package -Dspring.profiles.active=dev -DskipTests
-        working-directory: ./backend/configServer
-
-      - name: Build Gateway
-        run: mvn clean package -Dspring.profiles.active=dev -DskipTests
-        working-directory: ./backend/gateway
-
-      - name: Build User Service
-        run: mvn clean package -Dspring.profiles.active=dev -DskipTests
-        working-directory: ./backend/users
-
-      - name: Build DocGeneration Service
-        run: mvn clean package -Dspring.profiles.active=dev -DskipTests
-        working-directory: ./backend/docGeneration
-
-      - name: Build Notification Service
-        run: mvn clean package -Dspring.profiles.active=dev -DskipTests
-        working-directory: ./backend/notification
-
-      - name: Build Document Service
-        run: mvn clean package -Dspring.profiles.active=dev -DskipTests
-        working-directory: ./backend/documents
+      - name: Build ${{ matrix.service.name }}
+        run: mvn -B -ntp clean package -Dspring.profiles.active=dev -DskipTests
+        working-directory: ${{ matrix.service.path }}

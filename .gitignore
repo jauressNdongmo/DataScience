@@ -21,6 +21,8 @@ out-tsc/
 .angular/
 node_modules/
 
+.local-runtime/
+
 # Angular environment files
 src/environments/environment*.ts
 
@@ -121,3 +123,6 @@ pyvenv.cfg
 *.csv
 *.xlsx
 *.json
+# Keep React manifests tracked for CI
+!frontend/react/package.json
+!frontend/react/package-lock.json
