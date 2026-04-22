@@ -1,0 +1,199 @@
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+import pandas as pd
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
+from pydantic import BaseModel, Field
+
+from app.model import YieldModelService
+
+app = FastAPI(title="Agri ML Service", version="2.0.0")
+model_service = YieldModelService()
+
+
+@app.middleware("http")
+async def compatibility_prefix_rewrite(request: Request, call_next):
+    # Accept legacy forwarded paths (/ml/*) and unstripped paths (/api/ml/*).
+    path = request.scope.get("path", "")
+    for prefix in ("/api/ml", "/ml"):
+        if path == prefix:
+            request.scope["path"] = "/"
+            break
+        if path.startswith(f"{prefix}/"):
+            request.scope["path"] = path[len(prefix) :]
+            break
+    return await call_next(request)
+
+
+class TrainRequest(BaseModel):
+    csv_path: str = Field(default="/app/data/yield_df.csv")
+
+
+class PredictRequest(BaseModel):
+    country: str
+    crop: str
+    year: int
+    rain_mm_per_year: float
+    pesticides_tonnes: float
+    temperature_c: float
+
+
+class SimulateRequest(BaseModel):
+    country: str
+    crop: str
+    target_year: int = Field(default=0)
+    rain_variation_pct: float = Field(default=0)
+    temp_variation_c: float = Field(default=0)
+    pesticides_variation_pct: float = Field(default=0)
+
+
+class AlertRequest(BaseModel):
+    country: str
+    crop: str
+    rain_variation_pct: float = Field(default=-20)
+    temp_variation_c: float = Field(default=1.5)
+    pesticides_variation_pct: float = Field(default=0)
+
+
+@app.get("/health")
+def health() -> dict:
+    return {"status": "up"}
+
+
+@app.get("/state")
+def state() -> dict:
+    if not model_service.is_ready:
+        return {"ready": False}
+    return {"ready": True, **model_service.get_training_info()}
+
+
+@app.post("/train")
+def train(request: TrainRequest) -> dict:
+    csv_path = Path(request.csv_path)
+    if not csv_path.exists():
+        raise HTTPException(status_code=400, detail=f"CSV file not found: {csv_path}")
+
+    try:
+        df = pd.read_csv(csv_path)
+        result = model_service.train(df)
+        return {"status": "trained", **result}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/train/upload")
+def train_upload(file: UploadFile = File(...)) -> dict:
+    try:
+        df = pd.read_csv(file.file)
+        result = model_service.train(df)
+        return {"status": "trained", **result}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/predict")
+def predict(request: PredictRequest) -> dict:
+    try:
+        return model_service.predict(
+            country=request.country,
+            crop=request.crop,
+            year=request.year,
+            rain_mm_per_year=request.rain_mm_per_year,
+            pesticides_tonnes=request.pesticides_tonnes,
+            temperature_c=request.temperature_c,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/overview")
+def overview() -> dict:
+    try:
+        return model_service.get_overview_payload()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/options/countries")
+def options_countries() -> dict:
+    try:
+        return {"countries": model_service.get_countries()}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/options/crops")
+def options_crops(country: str = Query(...)) -> dict:
+    try:
+        return {"country": country, "crops": model_service.get_crops(country)}
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/scenario/context")
+def scenario_context(country: str = Query(...), crop: str = Query(...)) -> dict:
+    try:
+        return model_service.get_scenario_context(country, crop)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/scenario/simulate")
+def scenario_simulate(request: SimulateRequest) -> dict:
+    try:
+        return model_service.simulate(
+            country=request.country,
+            crop=request.crop,
+            target_year=request.target_year,
+            rain_variation_pct=request.rain_variation_pct,
+            temp_variation_c=request.temp_variation_c,
+            pesticides_variation_pct=request.pesticides_variation_pct,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/alerts")
+def alerts(request: AlertRequest) -> dict:
+    try:
+        return model_service.generate_alerts(
+            country=request.country,
+            crop=request.crop,
+            rain_variation_pct=request.rain_variation_pct,
+            temp_variation_c=request.temp_variation_c,
+            pesticides_variation_pct=request.pesticides_variation_pct,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/performance")
+def performance() -> dict:
+    try:
+        return model_service.get_performance_payload()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.on_event("startup")
+def startup_train() -> None:
+    auto_train = os.getenv("AUTO_TRAIN_ON_STARTUP", "false").strip().lower() == "true"
+    if not auto_train:
+        return
+
+    default_csv = Path(os.getenv("DATASET_PATH", "/app/data/yield_df.csv"))
+    if default_csv.exists():
+        df = pd.read_csv(default_csv)
+        model_service.train(df)

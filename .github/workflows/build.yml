@@ -1,0 +1,80 @@
+name: Build Angular and Spring Boot Microservices
+
+on:
+  push:
+    branches:
+      - main
+      - regent
+  pull_request:
+    branches:
+      - Develop
+      - main
+
+
+jobs:
+  build-angular:
+    name: Build Angular Application
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install Angular CLI
+        run: npm install -g @angular/cli@19
+
+      - name: Install Dependencies
+        run: npm install --legacy-peer-deps
+        working-directory: ./frontend/angular
+
+      - name: Build Angular Project
+        run: ng build
+        working-directory: ./frontend/angular
+
+  build-spring-boot:
+    name: Build Spring Boot Microservices
+    runs-on: ubuntu-latest
+    needs: build-angular
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup JDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: 21
+
+      - name: Build Discovery server
+        run: mvn clean package -Dspring.profiles.active=dev -DskipTests
+        working-directory: ./backend/discoveryServer
+
+      - name: Build Config Server
+        run: mvn clean package -Dspring.profiles.active=dev -DskipTests
+        working-directory: ./backend/configServer
+
+      - name: Build Gateway
+        run: mvn clean package -Dspring.profiles.active=dev -DskipTests
+        working-directory: ./backend/gateway
+
+      - name: Build User Service
+        run: mvn clean package -Dspring.profiles.active=dev -DskipTests
+        working-directory: ./backend/users
+
+      - name: Build DocGeneration Service
+        run: mvn clean package -Dspring.profiles.active=dev -DskipTests
+        working-directory: ./backend/docGeneration
+
+      - name: Build Notification Service
+        run: mvn clean package -Dspring.profiles.active=dev -DskipTests
+        working-directory: ./backend/notification
+
+      - name: Build Document Service
+        run: mvn clean package -Dspring.profiles.active=dev -DskipTests
+        working-directory: ./backend/documents

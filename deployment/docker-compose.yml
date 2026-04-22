@@ -1,0 +1,142 @@
+services:
+  frontend-react:
+    build:
+      context: ../frontend/react
+    container_name: frontend-react
+    ports:
+      - "8010:8010"
+    depends_on:
+      - gateway
+    networks:
+      - agri-net
+
+  mysql:
+    image: mysql:8
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: mysqlServer$$
+      MYSQL_DATABASE: agri_data_db
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d
+    networks:
+      - agri-net
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: mysql_phpmyadmin
+    restart: always
+    environment:
+      PMA_HOST: mysql
+      PMA_USER: springboot
+      PMA_PASSWORD: springboot
+    ports:
+      - "8001:80"
+    depends_on:
+      - mysql
+    networks:
+      - agri-net
+
+  discovery-server:
+    build:
+      context: ../backend/discoveryServer
+    container_name: discovery-server
+    ports:
+      - "8090:8090"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    networks:
+      - agri-net
+
+  config-server:
+    build:
+      context: ../backend/configServer
+    container_name: config-server
+    ports:
+      - "8888:8888"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - CONFIG_REPO_LOCATION=file:/config-repo
+    depends_on:
+      - discovery-server
+    volumes:
+      - ../config-repo:/config-repo:ro
+    networks:
+      - agri-net
+
+  gateway:
+    build:
+      context: ../backend/gateway
+    container_name: gateway
+    depends_on:
+      - config-server
+    entrypoint: ["/bin/sh", "-c", "echo 'Waiting for config-server...' && sleep 25 && java -jar /app/app.jar"]
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    ports:
+      - "8081:8081"
+    networks:
+      - agri-net
+
+  agri-data:
+    build:
+      context: ../backend/agriData
+    container_name: agri-data
+    depends_on:
+      - mysql
+      - config-server
+    entrypoint: ["/bin/sh", "-c", "echo 'Waiting for config-server...' && sleep 25 && java -jar /app/app.jar"]
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    ports:
+      - "8093:8093"
+    networks:
+      - agri-net
+
+  integration:
+    build:
+      context: ../backend/integration
+    container_name: integration
+    depends_on:
+      - config-server
+    entrypoint: ["/bin/sh", "-c", "echo 'Waiting for config-server...' && sleep 25 && java -jar /app/app.jar"]
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    ports:
+      - "8095:8095"
+    networks:
+      - agri-net
+
+  ml-python:
+    build:
+      context: ../backend/ml-python
+    container_name: ml-python
+    ports:
+      - "8000:8000"
+    networks:
+      - agri-net
+
+  decision:
+    build:
+      context: ../backend/decision
+    container_name: decision
+    depends_on:
+      - config-server
+      - integration
+      - ml-python
+    entrypoint: ["/bin/sh", "-c", "echo 'Waiting for dependencies...' && sleep 25 && java -jar /app/app.jar"]
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    ports:
+      - "8094:8094"
+    networks:
+      - agri-net
+
+volumes:
+  mysql-data:
+
+networks:
+  agri-net:
+    driver: bridge
