@@ -61,6 +61,16 @@ function fmt(value, digits = 0) {
   });
 }
 
+function shortModelVersion(modelVersion) {
+  if (!modelVersion) {
+    return "-";
+  }
+  if (modelVersion.length <= 20) {
+    return modelVersion;
+  }
+  return `${modelVersion.slice(0, 16)}...${modelVersion.slice(-6)}`;
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState("overview");
   const [uploading, setUploading] = useState(false);
@@ -73,6 +83,10 @@ export default function App() {
   const [performance, setPerformance] = useState(null);
 
   const [countries, setCountries] = useState([]);
+  const [modelRegistry, setModelRegistry] = useState(null);
+  const [fineTuneResult, setFineTuneResult] = useState(null);
+  const [selectedModelVersion, setSelectedModelVersion] = useState("");
+  const [modelActionLoading, setModelActionLoading] = useState(false);
 
   const [simCountry, setSimCountry] = useState("");
   const [simCrop, setSimCrop] = useState("");
@@ -211,10 +225,11 @@ export default function App() {
     setGlobalLoading(true);
     setError("");
     try {
-      const [overviewRes, countriesRes, performanceRes] = await Promise.all([
+      const [overviewRes, countriesRes, performanceRes, registryRes] = await Promise.all([
         axios.get(`${API_ROOT}/overview`),
         axios.get(`${API_ROOT}/options/countries`),
-        axios.get(`${API_ROOT}/performance`)
+        axios.get(`${API_ROOT}/performance`),
+        axios.get(`${API_ROOT}/model/registry`)
       ]);
 
       setOverview(overviewRes.data);
@@ -222,6 +237,16 @@ export default function App() {
 
       const normalized = normalizeTraining(trainingHint) || normalizeTraining(overviewRes.data?.training);
       setTraining(normalized);
+
+      const registry = registryRes.data || null;
+      setModelRegistry(registry);
+      const versionList = registry?.versions || [];
+      setSelectedModelVersion((prev) => {
+        if (prev && versionList.some((row) => row.model_version === prev)) {
+          return prev;
+        }
+        return registry?.active_model_version || "";
+      });
 
       const countryList = countriesRes.data?.countries || [];
       setCountries(countryList);
@@ -251,8 +276,14 @@ export default function App() {
       const formData = new FormData();
       formData.append("file", file);
       const response = await axios.post(`${API_ROOT}/train/upload`, formData, {
+        params: {
+          mode: "finetune",
+          promote_if_better: false,
+          replace_dataset: false
+        },
         headers: { "Content-Type": "multipart/form-data" }
       });
+      setFineTuneResult(response.data || null);
       await loadDashboardData(response.data);
       setActiveTab("overview");
     } catch (err) {
@@ -362,6 +393,61 @@ export default function App() {
     }
   }
 
+  async function activateModelVersion(modelVersion) {
+    if (!modelVersion) {
+      return;
+    }
+    setModelActionLoading(true);
+    setError("");
+    try {
+      await axios.post(`${API_ROOT}/model/activate`, {
+        model_version: modelVersion
+      });
+      setFineTuneResult(null);
+      await loadDashboardData();
+    } catch (err) {
+      setError(err?.response?.data?.detail || err?.message || "Impossible d'activer ce modèle");
+    } finally {
+      setModelActionLoading(false);
+    }
+  }
+
+  async function revertToBaseline() {
+    setModelActionLoading(true);
+    setError("");
+    try {
+      await axios.post(`${API_ROOT}/model/revert-baseline`);
+      setFineTuneResult(null);
+      await loadDashboardData();
+    } catch (err) {
+      setError(err?.response?.data?.detail || err?.message || "Impossible de revenir au modèle de base");
+    } finally {
+      setModelActionLoading(false);
+    }
+  }
+
+  function keepCurrentModel() {
+    setFineTuneResult(null);
+  }
+
+  const fineTuneRecommendation = useMemo(() => {
+    if (!fineTuneResult?.candidate) {
+      return null;
+    }
+    const candidateR2 = Number(fineTuneResult.candidate?.r2 ?? Number.NEGATIVE_INFINITY);
+    const activeR2 = Number(training?.r2 ?? Number.NEGATIVE_INFINITY);
+    const useCandidate = candidateR2 >= activeR2;
+
+    return {
+      recommendedModelVersion: useCandidate
+        ? fineTuneResult.candidate.model_version
+        : modelRegistry?.active_model_version,
+      message: useCandidate
+        ? "Le modèle fine-tuné est recommandé (R² supérieur ou égal)."
+        : "Le modèle actif reste recommandé (R² supérieur)."
+    };
+  }, [fineTuneResult, training, modelRegistry]);
+
   const sensitivityTraces = useMemo(() => {
     if (!simResult?.sensitivity) {
       return [];
@@ -410,13 +496,85 @@ export default function App() {
         <p className="sidebar-source">Données sources : FAO / Kaggle</p>
 
         {datasetLoaded && training && (
-          <div className="card card-orange sidebar-model-card">
-            <div className="card-header">
-              <span className="icon">military_tech</span> Meilleur modèle
+          <>
+            <div className="card card-orange sidebar-model-card">
+              <div className="card-header">
+                <span className="icon">military_tech</span> Modèle actif
+              </div>
+              <div className="card-value small">{training.best_model}</div>
+              <div className="card-footer">Précision (R²) : {fmt(training.r2, 4)}</div>
+              <div className="card-footer">Version : {shortModelVersion(training.model_version)}</div>
             </div>
-            <div className="card-value small">{training.best_model}</div>
-            <div className="card-footer">Précision (R²) : {fmt(training.r2, 4)}</div>
-          </div>
+
+            {modelRegistry && (
+              <div className="model-governance">
+                <div className="model-governance-title">
+                  <span className="icon">tune</span> Gouvernance Modèle
+                </div>
+                <div className="model-governance-line">
+                  Base : {shortModelVersion(modelRegistry.baseline_model_version)}
+                </div>
+                <div className="model-governance-line">
+                  Recommandé global : {shortModelVersion(modelRegistry.recommended_model_version)}
+                </div>
+
+                {fineTuneResult?.candidate && (
+                  <div className="fine-tune-summary">
+                    <div className="fine-tune-title">Résultat Fine-tuning</div>
+                    <div className="fine-tune-row">Actif R² : {fmt(training.r2, 4)}</div>
+                    <div className="fine-tune-row">Candidat R² : {fmt(fineTuneResult.candidate.r2, 4)}</div>
+                    <div className="fine-tune-recommendation">{fineTuneRecommendation?.message}</div>
+                    <div className="model-actions-row">
+                      <button
+                        type="button"
+                        className="primary-btn mini"
+                        disabled={modelActionLoading || !fineTuneRecommendation?.recommendedModelVersion}
+                        onClick={() => activateModelVersion(fineTuneRecommendation?.recommendedModelVersion)}
+                      >
+                        {modelActionLoading ? "Application..." : "Appliquer recommandé"}
+                      </button>
+                      <button type="button" className="ghost-btn" onClick={keepCurrentModel} disabled={modelActionLoading}>
+                        Garder l'actif
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <label className="field-wrap model-field-wrap">
+                  <span>Choisir un modèle enregistré</span>
+                  <select
+                    value={selectedModelVersion}
+                    onChange={(event) => setSelectedModelVersion(event.target.value)}
+                  >
+                    {(modelRegistry.versions || []).map((entry) => (
+                      <option key={entry.model_version} value={entry.model_version}>
+                        {`${shortModelVersion(entry.model_version)} | ${entry.mode} | R² ${fmt(entry.r2, 4)}`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="model-actions-row">
+                  <button
+                    type="button"
+                    className="secondary-btn mini"
+                    disabled={modelActionLoading || !selectedModelVersion}
+                    onClick={() => activateModelVersion(selectedModelVersion)}
+                  >
+                    {modelActionLoading ? "Activation..." : "Activer ce modèle"}
+                  </button>
+                  <button
+                    type="button"
+                    className="danger-btn"
+                    disabled={modelActionLoading || !modelRegistry.baseline_model_version}
+                    onClick={revertToBaseline}
+                  >
+                    Revenir au modèle de base
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </aside>
 

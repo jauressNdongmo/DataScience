@@ -126,3 +126,6 @@ pyvenv.cfg
 # Keep React manifests tracked for CI
 !frontend/react/package.json
 !frontend/react/package-lock.json
+
+# ML model artifacts (runtime)
+backend/ml-python/artifacts/

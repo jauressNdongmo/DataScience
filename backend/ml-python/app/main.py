@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.model import YieldModelService
 
-app = FastAPI(title="Agri ML Service", version="2.0.0")
+app = FastAPI(title="Agri ML Service", version="2.1.0")
 model_service = YieldModelService()
 
 
@@ -29,6 +29,14 @@ async def compatibility_prefix_rewrite(request: Request, call_next):
 
 class TrainRequest(BaseModel):
     csv_path: str = Field(default="/app/data/yield_df.csv")
+    mode: str = Field(default="baseline")
+    promote_if_better: bool = Field(default=True)
+    replace_dataset: bool = Field(default=False)
+    source_name: str = Field(default="train-endpoint")
+
+
+class ModelSelectionRequest(BaseModel):
+    model_version: str
 
 
 class PredictRequest(BaseModel):
@@ -69,6 +77,33 @@ def state() -> dict:
     return {"ready": True, **model_service.get_training_info()}
 
 
+@app.get("/model/registry")
+def model_registry() -> dict:
+    return model_service.get_registry()
+
+
+@app.post("/model/activate")
+def model_activate(request: ModelSelectionRequest) -> dict:
+    try:
+        result = model_service.activate_model(request.model_version)
+        return {"status": "activated", **result}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/model/revert-baseline")
+def model_revert_baseline() -> dict:
+    try:
+        result = model_service.revert_to_baseline()
+        return {"status": "baseline_activated", **result}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @app.post("/train")
 def train(request: TrainRequest) -> dict:
     csv_path = Path(request.csv_path)
@@ -77,18 +112,41 @@ def train(request: TrainRequest) -> dict:
 
     try:
         df = pd.read_csv(csv_path)
-        result = model_service.train(df)
-        return {"status": "trained", **result}
+        result = model_service.train(
+            df,
+            mode=request.mode,
+            source=request.source_name or str(csv_path),
+            promote_if_better=request.promote_if_better,
+            replace_dataset=request.replace_dataset,
+        )
+        status = "trained" if result.get("promoted") else "candidate_not_promoted"
+        return {"status": status, **result}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.post("/train/upload")
-def train_upload(file: UploadFile = File(...)) -> dict:
+def train_upload(
+    file: UploadFile = File(...),
+    mode: str = Query(default="finetune", pattern="^(baseline|finetune)$"),
+    promote_if_better: bool = Query(default=True),
+    replace_dataset: bool = Query(default=False),
+) -> dict:
     try:
         df = pd.read_csv(file.file)
-        result = model_service.train(df)
-        return {"status": "trained", **result}
+        result = model_service.train(
+            df,
+            mode=mode,
+            source=file.filename or "upload.csv",
+            promote_if_better=promote_if_better,
+            replace_dataset=replace_dataset,
+        )
+        status = "trained" if result.get("promoted") else "candidate_not_promoted"
+        return {"status": status, **result}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -190,10 +248,16 @@ def performance() -> dict:
 @app.on_event("startup")
 def startup_train() -> None:
     auto_train = os.getenv("AUTO_TRAIN_ON_STARTUP", "false").strip().lower() == "true"
-    if not auto_train:
+    if not auto_train or model_service.is_ready:
         return
 
     default_csv = Path(os.getenv("DATASET_PATH", "/app/data/yield_df.csv"))
     if default_csv.exists():
         df = pd.read_csv(default_csv)
-        model_service.train(df)
+        model_service.train(
+            df,
+            mode="baseline",
+            source=str(default_csv),
+            promote_if_better=True,
+            replace_dataset=True,
+        )

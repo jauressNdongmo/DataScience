@@ -198,13 +198,13 @@ start_stack() {
     python3 -m venv "$ROOT_DIR/backend/ml-python/.venv"
   fi
 
-  if ! "$ROOT_DIR/backend/ml-python/.venv/bin/python" -c "import fastapi" >/dev/null 2>&1; then
+  if ! "$ROOT_DIR/backend/ml-python/.venv/bin/python" -c "import fastapi,uvicorn,joblib,pandas,sklearn,xgboost" >/dev/null 2>&1; then
     echo "[INIT] Installing ml-python dependencies"
     "$pip_cmd" install -r "$ROOT_DIR/backend/ml-python/requirements.txt"
   fi
 
   start_background "ml-python" "$ROOT_DIR/backend/ml-python" \
-    "AUTO_TRAIN_ON_STARTUP=true DATASET_PATH='$ROOT_DIR/backend/ml-python/data/yield_df.csv' ./.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    "AUTO_TRAIN_ON_STARTUP=true DATASET_PATH='$ROOT_DIR/backend/ml-python/data/yield_df.csv' ./.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
   if [[ ! -d "$ROOT_DIR/frontend/react/node_modules" ]]; then
     echo "[INIT] Installing frontend dependencies"

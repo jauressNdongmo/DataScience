@@ -213,3 +213,78 @@ docker compose down -v
 ## Contrats API
 
 - Voir: `docs/CONTRACTS.md`
+
+## Cycle de vie du modele (implemente)
+
+Le service `ml-python` gere maintenant un cycle continu de modele:
+
+1. **Modele baseline**
+   - Entrainement initial sur le dataset de reference.
+   - Sauvegarde de l'artefact + metriques dans `backend/ml-python/artifacts/`.
+
+2. **Fine-tune utilisateur + choix explicite**
+   - Quand un utilisateur charge un CSV (`POST /train/upload`), le service peut faire un `mode=finetune`.
+   - Le dataset utilisateur est fusionne au dataset actif (sauf `replace_dataset=true`).
+   - Le frontend affiche les resultats du candidat (R2, version) et recommande le meilleur modele.
+   - L'utilisateur choisit ensuite le modele a activer.
+
+3. **Selection manuelle du modele**
+   - Le registry conserve toutes les versions (`baseline` et `finetune`).
+   - On peut activer n'importe quelle version en production.
+
+4. **Rollback vers baseline**
+   - Le modele baseline est memorise dans le registry.
+   - On peut revenir explicitement au baseline via endpoint dedie.
+
+### Endpoints ML utiles (V2)
+
+- `GET /state`: etat + version active
+- `GET /model/registry`: historique + version baseline + recommandation globale
+- `POST /train`: entrainement avec options (`baseline`/`finetune`)
+- `POST /train/upload`: upload CSV (souvent en `promote_if_better=false` pour laisser le choix utilisateur)
+- `POST /model/activate`: active une version specifique
+- `POST /model/revert-baseline`: revient au modele baseline
+
+Exemple upload fine-tune sans promotion auto:
+
+```bash
+curl -X POST "http://localhost:8081/api/ml/train/upload?mode=finetune&promote_if_better=false&replace_dataset=false" \
+  -F "file=@yield_df.csv"
+```
+
+## Donnees recentes (jusqu'a 2025)
+
+Voir le document detaille:
+- `docs/DATA_SOURCES_2025.md`
+
+Ce document liste les sources officielles pour:
+- production/rendement (FAOSTAT),
+- meteo/pluie/temperature (NASA POWER, NOAA CDO, CHIRPS),
+- prix marche (World Bank Pink Sheet, FAO FPI),
+- vegetation/NDVI (MODIS, eVIIRS).
+
+## Bootstrap dataset baseline (officiel)
+
+Pour reconstruire le dataset de base du modele ML (sources FAOSTAT + World Bank) :
+
+```bash
+source backend/ml-python/.venv/bin/activate
+python backend/ml-python/scripts/bootstrap_base_dataset.py --min-year 1990
+```
+
+Sorties generees :
+- `backend/ml-python/data/yield_df.csv` (dataset final pour entrainement)
+- `backend/ml-python/data/metadata.json` (provenance + couverture)
+- `backend/ml-python/data/raw/` (archives telechargees)
+
+
+## Activer le modele baseline sans lancer l'application
+
+Cette commande entraine et promeut le baseline directement depuis le terminal :
+
+```bash
+source backend/ml-python/.venv/bin/activate
+python backend/ml-python/scripts/promote_baseline_model.py \
+  --csv backend/ml-python/data/yield_df.csv \
+  --source bootstrap-baseline-cli
+```

@@ -1,4 +1,4 @@
-# API Contracts (V1)
+# API Contracts (V2)
 
 ## 1) Decision Service
 
@@ -28,8 +28,8 @@ Response:
   "ndviIndex": 0.44,
   "riskLevel": "MEDIUM",
   "recommendations": [
-    "Ajuster les intrants et intensifier le suivi météo terrain.",
-    "Surveiller les prix de marché et lisser les ventes sur plusieurs semaines."
+    "Ajuster les intrants et intensifier le suivi meteo terrain.",
+    "Surveiller les prix de marche et lisser les ventes sur plusieurs semaines."
   ]
 }
 ```
@@ -51,6 +51,50 @@ Response:
 
 ## 3) ML Python Service
 
+### GET `/state`
+
+Response:
+```json
+{
+  "ready": true,
+  "best_model": "XGBoost",
+  "r2": 0.94,
+  "samples": 28242,
+  "model_version": "model-20260422T210001Z-abc12345"
+}
+```
+
+### GET `/model/registry`
+
+Response (extrait):
+```json
+{
+  "active_model_version": "model-20260422T210001Z-abc12345",
+  "baseline_model_version": "model-20260422T210001Z-abc12345",
+  "recommended_model_version": "model-20260422T220220Z-1234abcd",
+  "active": {
+    "model_version": "model-20260422T210001Z-abc12345",
+    "best_model": "XGBoost",
+    "r2": 0.94,
+    "promoted": true
+  },
+  "versions": [
+    {
+      "model_version": "model-20260422T210001Z-abc12345",
+      "mode": "baseline",
+      "source": "yield_df.csv",
+      "promoted": true
+    },
+    {
+      "model_version": "model-20260422T211115Z-def67890",
+      "mode": "finetune",
+      "source": "user_upload.csv",
+      "promoted": false
+    }
+  ]
+}
+```
+
 ### POST `/predict`
 
 Request:
@@ -68,7 +112,8 @@ Request:
 Response:
 ```json
 {
-  "model": "GradientBoosting",
+  "model": "XGBoost",
+  "model_version": "model-20260422T210001Z-abc12345",
   "predicted_yield": 38150.42
 }
 ```
@@ -78,16 +123,73 @@ Response:
 Request:
 ```json
 {
-  "csv_path": "/app/data/yield_df.csv"
+  "csv_path": "/app/data/yield_df.csv",
+  "mode": "baseline",
+  "promote_if_better": true,
+  "replace_dataset": true,
+  "source_name": "bootstrap"
+}
+```
+
+### POST `/train/upload?mode=finetune&promote_if_better=true&replace_dataset=false`
+
+Multipart form-data:
+- `file`: CSV utilisateur
+
+Response (extrait):
+```json
+{
+  "status": "trained",
+  "promoted": true,
+  "promotion_reason": "improved_or_equal_metric",
+  "best_model": "XGBoost",
+  "r2": 0.95,
+  "active_model_version": "model-20260422T220220Z-1234abcd",
+  "candidate": {
+    "model_version": "model-20260422T220220Z-1234abcd",
+    "mode": "finetune",
+    "source": "my_data.csv"
+  }
+}
+```
+
+
+### POST `/model/activate`
+
+Request:
+```json
+{
+  "model_version": "model-20260422T220220Z-1234abcd"
 }
 ```
 
 Response:
 ```json
 {
-  "status": "trained",
-  "model": "GradientBoosting",
-  "r2": 0.91,
-  "samples": 28242
+  "status": "activated",
+  "active_model_version": "model-20260422T220220Z-1234abcd",
+  "training": {
+    "best_model": "Random Forest",
+    "r2": 0.95,
+    "samples": 45729,
+    "model_version": "model-20260422T220220Z-1234abcd"
+  }
+}
+```
+
+### POST `/model/revert-baseline`
+
+Response:
+```json
+{
+  "status": "baseline_activated",
+  "baseline_model_version": "model-20260422T210001Z-abc12345",
+  "active_model_version": "model-20260422T210001Z-abc12345",
+  "training": {
+    "best_model": "XGBoost",
+    "r2": 0.94,
+    "samples": 28242,
+    "model_version": "model-20260422T210001Z-abc12345"
+  }
 }
 ```

@@ -1,7 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+import json
+import os
+import uuid
 
+import joblib
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
@@ -37,15 +43,50 @@ class ModelState:
     le_item: LabelEncoder
     results: dict[str, TrainedModelResult]
     best_model_name: str
+    model_version: str
+    created_at: str
+    source: str
+    mode: str
+
+
+@dataclass
+class RegistryVersion:
+    model_version: str
+    artifact_path: str
+    created_at: str
+    source: str
+    mode: str
+    promoted: bool
+    best_model: str
+    r2: float
+    samples: int
+    models: dict[str, dict[str, float]]
 
 
 class YieldModelService:
-    def __init__(self) -> None:
+    def __init__(self, artifacts_dir: str | Path | None = None) -> None:
+        base_dir = Path(artifacts_dir or os.getenv("MODEL_ARTIFACTS_DIR", "artifacts"))
+        self.artifacts_dir = base_dir.resolve()
+        self.models_dir = self.artifacts_dir / "models"
+        self.registry_path = self.artifacts_dir / "registry.json"
+
+        self.models_dir.mkdir(parents=True, exist_ok=True)
+        self.registry: dict = {"active_model_version": None, "baseline_model_version": None, "versions": []}
         self.state: ModelState | None = None
+
+        self._load_registry()
+        self._load_active_model()
 
     @property
     def is_ready(self) -> bool:
         return self.state is not None
+
+    def _utc_now_iso(self) -> str:
+        return datetime.now(UTC).isoformat()
+
+    def _new_model_version(self) -> str:
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        return f"model-{timestamp}-{uuid.uuid4().hex[:8]}"
 
     def _prepare_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
         if "Unnamed: 0" in df.columns:
@@ -82,24 +123,8 @@ class YieldModelService:
         df["Item"] = df["Item"].astype(str)
         return df
 
-    def train(self, df: pd.DataFrame) -> dict:
-        df = self._prepare_dataframe(df)
-
-        le_area = LabelEncoder()
-        le_item = LabelEncoder()
-
-        df_model = df.copy()
-        df_model["Area_encoded"] = le_area.fit_transform(df_model["Area"])
-        df_model["Item_encoded"] = le_item.fit_transform(df_model["Item"])
-
-        X = df_model[FEATURES]
-        y = df_model["hg/ha_yield"]
-
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42
-        )
-
-        candidate_models = {
+    def _candidate_models(self) -> dict[str, object]:
+        return {
             "Random Forest": RandomForestRegressor(
                 n_estimators=200,
                 max_depth=20,
@@ -124,8 +149,25 @@ class YieldModelService:
             ),
         }
 
+    def _train_state(self, df: pd.DataFrame, source: str, mode: str) -> ModelState:
+        df = self._prepare_dataframe(df)
+
+        le_area = LabelEncoder()
+        le_item = LabelEncoder()
+
+        df_model = df.copy()
+        df_model["Area_encoded"] = le_area.fit_transform(df_model["Area"])
+        df_model["Item_encoded"] = le_item.fit_transform(df_model["Item"])
+
+        X = df_model[FEATURES]
+        y = df_model["hg/ha_yield"]
+
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42
+        )
+
         results: dict[str, TrainedModelResult] = {}
-        for name, model in candidate_models.items():
+        for name, model in self._candidate_models().items():
             model.fit(X_train, y_train)
             preds = model.predict(X_test)
             feature_importance = getattr(model, "feature_importances_", np.zeros(len(FEATURES)))
@@ -138,26 +180,258 @@ class YieldModelService:
             )
 
         best_model_name = max(results, key=lambda model_name: results[model_name].r2)
-        self.state = ModelState(
+
+        return ModelState(
             df=df,
             le_area=le_area,
             le_item=le_item,
             results=results,
             best_model_name=best_model_name,
+            model_version=self._new_model_version(),
+            created_at=self._utc_now_iso(),
+            source=source,
+            mode=mode,
         )
 
+    def _state_summary(self, state: ModelState) -> dict:
+        best = state.results[state.best_model_name]
         return {
-            "best_model": best_model_name,
-            "r2": results[best_model_name].r2,
-            "samples": int(len(df)),
+            "best_model": state.best_model_name,
+            "r2": float(best.r2),
+            "samples": int(len(state.df)),
+            "model_version": state.model_version,
+            "created_at": state.created_at,
+            "source": state.source,
+            "mode": state.mode,
             "models": {
                 name: {
-                    "MAE": result.mae,
-                    "RMSE": result.rmse,
-                    "R2": result.r2,
+                    "MAE": float(result.mae),
+                    "RMSE": float(result.rmse),
+                    "R2": float(result.r2),
                 }
-                for name, result in results.items()
+                for name, result in state.results.items()
             },
+        }
+
+    def _load_registry(self) -> None:
+        if not self.registry_path.exists():
+            return
+
+        try:
+            with self.registry_path.open("r", encoding="utf-8") as f:
+                registry = json.load(f)
+            if isinstance(registry, dict):
+                self.registry = {
+                    "active_model_version": registry.get("active_model_version"),
+                    "baseline_model_version": registry.get("baseline_model_version"),
+                    "versions": registry.get("versions", []),
+                }
+        except Exception:
+            self.registry = {"active_model_version": None, "baseline_model_version": None, "versions": []}
+
+    def _save_registry(self) -> None:
+        payload = {
+            "active_model_version": self.registry.get("active_model_version"),
+            "baseline_model_version": self.registry.get("baseline_model_version"),
+            "versions": self.registry.get("versions", []),
+        }
+        self.registry_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.registry_path.open("w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+
+    def _find_registry_entry(self, model_version: str) -> dict | None:
+        for version in self.registry.get("versions", []):
+            if version.get("model_version") == model_version:
+                return version
+        return None
+
+    def _persist_model_state(self, state: ModelState, promoted: bool) -> None:
+        artifact_path = self.models_dir / f"{state.model_version}.joblib"
+        joblib.dump(state, artifact_path)
+
+        summary = self._state_summary(state)
+        version = RegistryVersion(
+            model_version=state.model_version,
+            artifact_path=str(artifact_path),
+            created_at=state.created_at,
+            source=state.source,
+            mode=state.mode,
+            promoted=promoted,
+            best_model=summary["best_model"],
+            r2=summary["r2"],
+            samples=summary["samples"],
+            models=summary["models"],
+        )
+
+        existing = self._find_registry_entry(state.model_version)
+        if existing:
+            existing.update(asdict(version))
+        else:
+            self.registry["versions"].append(asdict(version))
+
+        if promoted:
+            self.registry["active_model_version"] = state.model_version
+            if state.mode == "baseline" and not self.registry.get("baseline_model_version"):
+                self.registry["baseline_model_version"] = state.model_version
+
+        self._save_registry()
+
+    def _load_active_model(self) -> None:
+        active_model_version = self.registry.get("active_model_version")
+        if not active_model_version:
+            return
+
+        entry = self._find_registry_entry(active_model_version)
+        if not entry:
+            return
+
+        artifact = Path(entry.get("artifact_path", ""))
+        if not artifact.exists():
+            return
+
+        try:
+            loaded = joblib.load(artifact)
+            if isinstance(loaded, ModelState):
+                self.state = loaded
+        except Exception:
+            self.state = None
+
+    def _get_recommended_model_version(self) -> str | None:
+        versions = self.registry.get("versions", [])
+        if not versions:
+            return None
+
+        promoted_versions = [row for row in versions if row.get("promoted")]
+        source = promoted_versions or versions
+        best = max(source, key=lambda row: float(row.get("r2", -1e9)))
+        return best.get("model_version")
+
+    def _load_state_for_version(self, model_version: str) -> ModelState:
+        entry = self._find_registry_entry(model_version)
+        if not entry:
+            raise ValueError(f"Unknown model_version: {model_version}")
+
+        artifact = Path(entry.get("artifact_path", ""))
+        if not artifact.exists():
+            raise ValueError(f"Artifact not found for model_version: {model_version}")
+
+        loaded = joblib.load(artifact)
+        if not isinstance(loaded, ModelState):
+            raise ValueError(f"Invalid artifact payload for model_version: {model_version}")
+        return loaded
+
+    def activate_model(self, model_version: str) -> dict:
+        chosen = self._load_state_for_version(model_version)
+        self.state = chosen
+        self.registry["active_model_version"] = model_version
+        self._save_registry()
+        return {
+            "active_model_version": model_version,
+            "training": self.get_training_info(),
+        }
+
+    def revert_to_baseline(self) -> dict:
+        baseline_model_version = self.registry.get("baseline_model_version")
+        if not baseline_model_version:
+            versions = [
+                row
+                for row in self.registry.get("versions", [])
+                if row.get("mode") == "baseline" and row.get("promoted")
+            ]
+            if not versions:
+                raise ValueError("No baseline model available in registry")
+            versions = sorted(versions, key=lambda row: row.get("created_at", ""))
+            baseline_model_version = versions[0].get("model_version")
+            self.registry["baseline_model_version"] = baseline_model_version
+
+        result = self.activate_model(baseline_model_version)
+        result["baseline_model_version"] = baseline_model_version
+        return result
+
+    def get_registry(self) -> dict:
+        active = self.registry.get("active_model_version")
+        baseline = self.registry.get("baseline_model_version")
+        versions = sorted(
+            self.registry.get("versions", []),
+            key=lambda row: row.get("created_at", ""),
+            reverse=True,
+        )
+        recommended = self._get_recommended_model_version()
+        return {
+            "active_model_version": active,
+            "baseline_model_version": baseline,
+            "recommended_model_version": recommended,
+            "active": next((row for row in versions if row.get("model_version") == active), None),
+            "baseline": next((row for row in versions if row.get("model_version") == baseline), None),
+            "recommended": next((row for row in versions if row.get("model_version") == recommended), None),
+            "versions": versions,
+        }
+
+    def train(
+        self,
+        df: pd.DataFrame,
+        mode: str = "baseline",
+        source: str = "manual",
+        promote_if_better: bool = True,
+        replace_dataset: bool = False,
+    ) -> dict:
+        mode = mode.strip().lower()
+        if mode not in {"baseline", "finetune"}:
+            raise ValueError("mode must be 'baseline' or 'finetune'")
+
+        incoming_df = self._prepare_dataframe(df)
+
+        if mode == "finetune" and self.state is not None and not replace_dataset:
+            training_df = pd.concat([self.state.df, incoming_df], ignore_index=True)
+            training_df = training_df.drop_duplicates(ignore_index=True)
+        else:
+            training_df = incoming_df
+
+        current_state = self.state
+        current_r2 = None
+        if current_state is not None:
+            current_r2 = current_state.results[current_state.best_model_name].r2
+
+        candidate_state = self._train_state(training_df, source=source, mode=mode)
+        candidate_summary = self._state_summary(candidate_state)
+
+        promoted = True
+        promotion_reason = "initial_model"
+        if current_state is not None:
+            promotion_reason = "improved_or_equal_metric"
+            if promote_if_better and candidate_summary["r2"] < float(current_r2):
+                promoted = False
+                promotion_reason = "candidate_under_active_r2"
+
+        self._persist_model_state(candidate_state, promoted=promoted)
+
+        if promoted:
+            self.state = candidate_state
+            active_summary = candidate_summary
+        else:
+            self.state = current_state
+            active_summary = self.get_training_info()
+
+        return {
+            "best_model": active_summary["best_model"],
+            "r2": active_summary["r2"],
+            "samples": active_summary["samples"],
+            "model_version": active_summary.get("model_version"),
+            "models": active_summary.get("models", {}),
+            "promoted": promoted,
+            "promotion_reason": promotion_reason,
+            "candidate": {
+                "best_model": candidate_summary["best_model"],
+                "r2": candidate_summary["r2"],
+                "samples": candidate_summary["samples"],
+                "model_version": candidate_summary["model_version"],
+                "created_at": candidate_summary["created_at"],
+                "source": candidate_summary["source"],
+                "mode": candidate_summary["mode"],
+                "models": candidate_summary["models"],
+            },
+            "active_model_version": self.registry.get("active_model_version"),
+            "registry_versions": len(self.registry.get("versions", [])),
         }
 
     def _require_state(self) -> ModelState:
@@ -167,11 +441,16 @@ class YieldModelService:
 
     def get_training_info(self) -> dict:
         state = self._require_state()
-        best = state.results[state.best_model_name]
+        summary = self._state_summary(state)
         return {
-            "best_model": state.best_model_name,
-            "r2": best.r2,
-            "samples": int(len(state.df)),
+            "best_model": summary["best_model"],
+            "r2": summary["r2"],
+            "samples": summary["samples"],
+            "model_version": summary["model_version"],
+            "created_at": summary["created_at"],
+            "source": summary["source"],
+            "mode": summary["mode"],
+            "models": summary["models"],
         }
 
     def get_countries(self) -> list[str]:
@@ -245,6 +524,7 @@ class YieldModelService:
 
         return {
             "model": state.best_model_name,
+            "model_version": state.model_version,
             "predicted_yield": prediction,
         }
 
@@ -637,6 +917,7 @@ class YieldModelService:
             "pluie_mod": rain_modified,
             "temp_mod": temp_modified,
             "pest_mod": pesticides_modified,
+            "model_version": self._require_state().model_version,
         }
 
         return {
@@ -653,6 +934,7 @@ class YieldModelService:
         return {
             "best_model": best_model_name,
             "r2": state.results[best_model_name].r2,
+            "model_version": state.model_version,
             "feature_importance": [
                 {"feature": str(feature), "importance": float(value)}
                 for feature, value in importance.items()
