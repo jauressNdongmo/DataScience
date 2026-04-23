@@ -626,6 +626,52 @@
   font-size: 0.8rem;
 }
 
+.model-table-wrap {
+  margin-top: 10px;
+}
+
+.model-table td {
+  vertical-align: top;
+}
+
+.model-name-input {
+  width: 100%;
+  min-width: 180px;
+  border: 1px solid rgba(139, 94, 60, 0.35);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.86rem;
+  color: #2C1810;
+}
+
+.model-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.model-badge {
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.model-badge.active {
+  background: rgba(45, 106, 46, 0.12);
+  color: #1b5e20;
+}
+
+.model-badge.baseline {
+  background: rgba(41, 128, 185, 0.12);
+  color: #1e3a5f;
+}
+
+.model-badge.recommended {
+  background: rgba(232, 130, 12, 0.18);
+  color: #7a4300;
+}
+
 .separator {
   border: none;
   border-top: 1px solid rgba(139, 94, 60, 0.2);
@@ -859,6 +905,10 @@
 
   .tabs {
     overflow-x: auto;
+  }
+
+  .model-name-input {
+    min-width: 140px;
   }
 
   .navbar-title {

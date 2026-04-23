@@ -74,6 +74,7 @@ Response (extrait):
   "recommended_model_version": "model-20260422T220220Z-1234abcd",
   "active": {
     "model_version": "model-20260422T210001Z-abc12345",
+    "display_name": "Baseline global",
     "best_model": "XGBoost",
     "r2": 0.94,
     "promoted": true
@@ -191,5 +192,39 @@ Response:
     "samples": 28242,
     "model_version": "model-20260422T210001Z-abc12345"
   }
+}
+```
+
+
+### PATCH `/model/{model_version}/name`
+
+Request:
+```json
+{
+  "display_name": "Fine-tune Avril 2026"
+}
+```
+
+Response:
+```json
+{
+  "status": "renamed",
+  "model_version": "model-20260422T220220Z-1234abcd",
+  "display_name": "Fine-tune Avril 2026"
+}
+```
+
+### DELETE `/model/{model_version}`
+
+Règle: la suppression du `baseline_model_version` est refusée.
+
+Response:
+```json
+{
+  "status": "deleted",
+  "deleted_model_version": "model-20260422T220220Z-1234abcd",
+  "active_model_version": "model-20260422T210001Z-abc12345",
+  "baseline_model_version": "model-20260422T210001Z-abc12345",
+  "registry_versions": 3
 }
 ```

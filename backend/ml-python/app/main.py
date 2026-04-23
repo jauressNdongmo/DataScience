@@ -31,12 +31,16 @@ class TrainRequest(BaseModel):
     csv_path: str = Field(default="/app/data/yield_df.csv")
     mode: str = Field(default="baseline")
     promote_if_better: bool = Field(default=True)
-    replace_dataset: bool = Field(default=False)
+    replace_dataset: bool | None = Field(default=None)
     source_name: str = Field(default="train-endpoint")
 
 
 class ModelSelectionRequest(BaseModel):
     model_version: str
+
+
+class ModelRenameRequest(BaseModel):
+    display_name: str = Field(min_length=1, max_length=80)
 
 
 class PredictRequest(BaseModel):
@@ -104,6 +108,26 @@ def model_revert_baseline() -> dict:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@app.patch("/model/{model_version}/name")
+def model_rename(model_version: str, request: ModelRenameRequest) -> dict:
+    try:
+        result = model_service.rename_model(model_version=model_version, display_name=request.display_name)
+        return {"status": "renamed", **result}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/model/{model_version}")
+def model_delete(model_version: str) -> dict:
+    try:
+        result = model_service.delete_model(model_version)
+        return {"status": "deleted", **result}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @app.post("/train")
 def train(request: TrainRequest) -> dict:
     csv_path = Path(request.csv_path)
@@ -111,13 +135,15 @@ def train(request: TrainRequest) -> dict:
         raise HTTPException(status_code=400, detail=f"CSV file not found: {csv_path}")
 
     try:
+        mode = request.mode.strip().lower()
+        replace_dataset = request.replace_dataset if request.replace_dataset is not None else (mode == "finetune")
         df = pd.read_csv(csv_path)
         result = model_service.train(
             df,
-            mode=request.mode,
+            mode=mode,
             source=request.source_name or str(csv_path),
             promote_if_better=request.promote_if_better,
-            replace_dataset=request.replace_dataset,
+            replace_dataset=replace_dataset,
         )
         status = "trained" if result.get("promoted") else "candidate_not_promoted"
         return {"status": status, **result}
@@ -132,16 +158,17 @@ def train_upload(
     file: UploadFile = File(...),
     mode: str = Query(default="finetune", pattern="^(baseline|finetune)$"),
     promote_if_better: bool = Query(default=True),
-    replace_dataset: bool = Query(default=False),
+    replace_dataset: bool | None = Query(default=None),
 ) -> dict:
     try:
+        effective_replace_dataset = replace_dataset if replace_dataset is not None else (mode == "finetune")
         df = pd.read_csv(file.file)
         result = model_service.train(
             df,
             mode=mode,
             source=file.filename or "upload.csv",
             promote_if_better=promote_if_better,
-            replace_dataset=replace_dataset,
+            replace_dataset=effective_replace_dataset,
         )
         status = "trained" if result.get("promoted") else "candidate_not_promoted"
         return {"status": status, **result}

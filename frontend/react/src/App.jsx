@@ -11,7 +11,8 @@ const TABS = [
   { id: "overview", label: "Vue d'ensemble" },
   { id: "simulator", label: "Simulateur" },
   { id: "alerts", label: "Alertes & Décisions" },
-  { id: "performance", label: "Performances Modèles" }
+  { id: "performance", label: "Performances Modèles" },
+  { id: "models", label: "Gestion Modèles" }
 ];
 
 const TEAM = [
@@ -71,6 +72,14 @@ function shortModelVersion(modelVersion) {
   return `${modelVersion.slice(0, 16)}...${modelVersion.slice(-6)}`;
 }
 
+function modelDisplayName(entry) {
+  if (!entry) {
+    return "-";
+  }
+  const name = String(entry.display_name || "").trim();
+  return name || shortModelVersion(entry.model_version);
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState("overview");
   const [uploading, setUploading] = useState(false);
@@ -87,6 +96,7 @@ export default function App() {
   const [fineTuneResult, setFineTuneResult] = useState(null);
   const [selectedModelVersion, setSelectedModelVersion] = useState("");
   const [modelActionLoading, setModelActionLoading] = useState(false);
+  const [modelNameDrafts, setModelNameDrafts] = useState({});
 
   const [simCountry, setSimCountry] = useState("");
   const [simCrop, setSimCrop] = useState("");
@@ -247,6 +257,14 @@ export default function App() {
         }
         return registry?.active_model_version || "";
       });
+      setModelNameDrafts((prev) => {
+        const nextDrafts = {};
+        versionList.forEach((row) => {
+          const currentName = String(row.display_name || row.model_version || "").trim();
+          nextDrafts[row.model_version] = prev[row.model_version] ?? currentName;
+        });
+        return nextDrafts;
+      });
 
       const countryList = countriesRes.data?.countries || [];
       setCountries(countryList);
@@ -279,7 +297,7 @@ export default function App() {
         params: {
           mode: "finetune",
           promote_if_better: false,
-          replace_dataset: false
+          replace_dataset: true
         },
         headers: { "Content-Type": "multipart/form-data" }
       });
@@ -430,6 +448,45 @@ export default function App() {
     setFineTuneResult(null);
   }
 
+  async function renameModelVersion(modelVersion) {
+    const nextName = String(modelNameDrafts[modelVersion] || "").trim();
+    if (!nextName) {
+      setError("Le nom du modèle ne peut pas être vide");
+      return;
+    }
+
+    setModelActionLoading(true);
+    setError("");
+    try {
+      await axios.patch(`${API_ROOT}/model/${encodeURIComponent(modelVersion)}/name`, {
+        display_name: nextName
+      });
+      await loadDashboardData();
+    } catch (err) {
+      setError(err?.response?.data?.detail || err?.message || "Impossible de renommer ce modèle");
+    } finally {
+      setModelActionLoading(false);
+    }
+  }
+
+  async function deleteModelVersion(modelVersion) {
+    if (!window.confirm("Supprimer ce modèle ? Cette action est irréversible.")) {
+      return;
+    }
+
+    setModelActionLoading(true);
+    setError("");
+    try {
+      await axios.delete(`${API_ROOT}/model/${encodeURIComponent(modelVersion)}`);
+      setFineTuneResult(null);
+      await loadDashboardData();
+    } catch (err) {
+      setError(err?.response?.data?.detail || err?.message || "Impossible de supprimer ce modèle");
+    } finally {
+      setModelActionLoading(false);
+    }
+  }
+
   const fineTuneRecommendation = useMemo(() => {
     if (!fineTuneResult?.candidate) {
       return null;
@@ -503,6 +560,7 @@ export default function App() {
               </div>
               <div className="card-value small">{training.best_model}</div>
               <div className="card-footer">Précision (R²) : {fmt(training.r2, 4)}</div>
+              <div className="card-footer">Nom : {training.display_name || shortModelVersion(training.model_version)}</div>
               <div className="card-footer">Version : {shortModelVersion(training.model_version)}</div>
             </div>
 
@@ -548,7 +606,7 @@ export default function App() {
                   >
                     {(modelRegistry.versions || []).map((entry) => (
                       <option key={entry.model_version} value={entry.model_version}>
-                        {`${shortModelVersion(entry.model_version)} | ${entry.mode} | R² ${fmt(entry.r2, 4)}`}
+                        {`${modelDisplayName(entry)} | ${entry.mode} | R² ${fmt(entry.r2, 4)}`}
                       </option>
                     ))}
                   </select>
@@ -987,6 +1045,98 @@ export default function App() {
                         </div>
                       </>
                     )}
+                  </section>
+                )}
+
+
+                {activeTab === "models" && modelRegistry && (
+                  <section>
+                    <h3 className="section-title">
+                      <span className="icon">inventory_2</span> Catalogue des modèles
+                    </h3>
+                    <p className="section-subtext">Renommez, activez ou supprimez les modèles. Le modèle de base reste protégé.</p>
+
+                    <div className="table-wrap model-table-wrap">
+                      <table className="stress-table model-table">
+                        <thead>
+                          <tr>
+                            <th>Nom</th>
+                            <th>Version</th>
+                            <th>Mode</th>
+                            <th>R²</th>
+                            <th>Statut</th>
+                            <th>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(modelRegistry.versions || []).map((entry) => {
+                            const isActive = entry.model_version === modelRegistry.active_model_version;
+                            const isBaseline = entry.model_version === modelRegistry.baseline_model_version;
+                            const isRecommended = entry.model_version === modelRegistry.recommended_model_version;
+                            const draftName = modelNameDrafts[entry.model_version] ?? modelDisplayName(entry);
+
+                            return (
+                              <tr key={entry.model_version}>
+                                <td>
+                                  <input
+                                    className="model-name-input"
+                                    type="text"
+                                    maxLength={80}
+                                    value={draftName}
+                                    onChange={(event) =>
+                                      setModelNameDrafts((prev) => ({
+                                        ...prev,
+                                        [entry.model_version]: event.target.value
+                                      }))
+                                    }
+                                  />
+                                </td>
+                                <td>
+                                  <code>{shortModelVersion(entry.model_version)}</code>
+                                </td>
+                                <td>{entry.mode}</td>
+                                <td>{fmt(entry.r2, 4)}</td>
+                                <td>
+                                  <div className="model-badges">
+                                    {isActive && <span className="model-badge active">Actif</span>}
+                                    {isBaseline && <span className="model-badge baseline">Base</span>}
+                                    {isRecommended && <span className="model-badge recommended">Recommandé</span>}
+                                  </div>
+                                </td>
+                                <td>
+                                  <div className="model-actions-row">
+                                    <button
+                                      type="button"
+                                      className="secondary-btn mini"
+                                      disabled={modelActionLoading || isActive}
+                                      onClick={() => activateModelVersion(entry.model_version)}
+                                    >
+                                      {isActive ? "Actif" : "Activer"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="primary-btn mini"
+                                      disabled={modelActionLoading || !String(draftName || "").trim()}
+                                      onClick={() => renameModelVersion(entry.model_version)}
+                                    >
+                                      Renommer
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="danger-btn"
+                                      disabled={modelActionLoading || isBaseline}
+                                      onClick={() => deleteModelVersion(entry.model_version)}
+                                    >
+                                      Supprimer
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </section>
                 )}
 

@@ -22,6 +22,7 @@ out-tsc/
 node_modules/
 
 .local-runtime/
+artifacts/
 
 # Angular environment files
 src/environments/environment*.ts

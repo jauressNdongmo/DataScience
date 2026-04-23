@@ -52,6 +52,7 @@ class ModelState:
 @dataclass
 class RegistryVersion:
     model_version: str
+    display_name: str
     artifact_path: str
     created_at: str
     source: str
@@ -87,6 +88,9 @@ class YieldModelService:
     def _new_model_version(self) -> str:
         timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         return f"model-{timestamp}-{uuid.uuid4().hex[:8]}"
+
+    def _default_display_name(self, model_version: str) -> str:
+        return model_version
 
     def _prepare_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
         if "Unnamed: 0" in df.columns:
@@ -226,6 +230,8 @@ class YieldModelService:
                     "baseline_model_version": registry.get("baseline_model_version"),
                     "versions": registry.get("versions", []),
                 }
+                if self._normalize_registry():
+                    self._save_registry()
         except Exception:
             self.registry = {"active_model_version": None, "baseline_model_version": None, "versions": []}
 
@@ -239,6 +245,62 @@ class YieldModelService:
         with self.registry_path.open("w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
 
+    def _normalize_registry(self) -> bool:
+        changed = False
+        versions = self.registry.get("versions", [])
+        if not isinstance(versions, list):
+            versions = []
+            changed = True
+
+        normalized_versions: list[dict] = []
+        known_versions: set[str] = set()
+        for row in versions:
+            if not isinstance(row, dict):
+                changed = True
+                continue
+            model_version = str(row.get("model_version") or "").strip()
+            if not model_version:
+                changed = True
+                continue
+            if model_version in known_versions:
+                changed = True
+                continue
+            known_versions.add(model_version)
+            display_name = str(row.get("display_name") or "").strip() or self._default_display_name(model_version)
+            if row.get("display_name") != display_name:
+                changed = True
+            row["display_name"] = display_name
+            normalized_versions.append(row)
+
+        self.registry["versions"] = normalized_versions
+
+        active = self.registry.get("active_model_version")
+        baseline = self.registry.get("baseline_model_version")
+        if active and active not in known_versions:
+            self.registry["active_model_version"] = None
+            changed = True
+        if baseline and baseline not in known_versions:
+            self.registry["baseline_model_version"] = None
+            changed = True
+
+        if not self.registry.get("baseline_model_version"):
+            baseline_candidates = [
+                row
+                for row in normalized_versions
+                if row.get("mode") == "baseline" and row.get("promoted")
+            ]
+            if baseline_candidates:
+                baseline_candidates.sort(key=lambda row: row.get("created_at", ""))
+                self.registry["baseline_model_version"] = baseline_candidates[0].get("model_version")
+                changed = True
+
+        if not self.registry.get("active_model_version"):
+            baseline_model_version = self.registry.get("baseline_model_version")
+            if baseline_model_version:
+                self.registry["active_model_version"] = baseline_model_version
+                changed = True
+        return changed
+
     def _find_registry_entry(self, model_version: str) -> dict | None:
         for version in self.registry.get("versions", []):
             if version.get("model_version") == model_version:
@@ -250,8 +312,15 @@ class YieldModelService:
         joblib.dump(state, artifact_path)
 
         summary = self._state_summary(state)
+        existing = self._find_registry_entry(state.model_version)
+        display_name = (
+            str(existing.get("display_name", "")).strip()
+            if existing is not None
+            else self._default_display_name(state.model_version)
+        ) or self._default_display_name(state.model_version)
         version = RegistryVersion(
             model_version=state.model_version,
+            display_name=display_name,
             artifact_path=str(artifact_path),
             created_at=state.created_at,
             source=state.source,
@@ -263,7 +332,6 @@ class YieldModelService:
             models=summary["models"],
         )
 
-        existing = self._find_registry_entry(state.model_version)
         if existing:
             existing.update(asdict(version))
         else:
@@ -271,7 +339,7 @@ class YieldModelService:
 
         if promoted:
             self.registry["active_model_version"] = state.model_version
-            if state.mode == "baseline" and not self.registry.get("baseline_model_version"):
+            if state.mode == "baseline":
                 self.registry["baseline_model_version"] = state.model_version
 
         self._save_registry()
@@ -329,6 +397,65 @@ class YieldModelService:
             "active_model_version": model_version,
             "training": self.get_training_info(),
         }
+
+    def rename_model(self, model_version: str, display_name: str) -> dict:
+        entry = self._find_registry_entry(model_version)
+        if not entry:
+            raise ValueError(f"Unknown model_version: {model_version}")
+
+        clean_name = (display_name or "").strip()
+        if not clean_name:
+            raise ValueError("display_name cannot be empty")
+        if len(clean_name) > 80:
+            raise ValueError("display_name must be at most 80 characters")
+
+        entry["display_name"] = clean_name
+        self._save_registry()
+        return {
+            "model_version": model_version,
+            "display_name": clean_name,
+            "active_model_version": self.registry.get("active_model_version"),
+            "baseline_model_version": self.registry.get("baseline_model_version"),
+        }
+
+    def delete_model(self, model_version: str) -> dict:
+        baseline_model_version = self.registry.get("baseline_model_version")
+        if baseline_model_version and model_version == baseline_model_version:
+            raise ValueError("The baseline model cannot be deleted")
+
+        entry = self._find_registry_entry(model_version)
+        if not entry:
+            raise ValueError(f"Unknown model_version: {model_version}")
+
+        artifact = Path(entry.get("artifact_path", ""))
+        self.registry["versions"] = [
+            row for row in self.registry.get("versions", []) if row.get("model_version") != model_version
+        ]
+
+        if artifact.exists():
+            artifact.unlink()
+
+        was_active = self.registry.get("active_model_version") == model_version
+        if was_active:
+            fallback_model_version = self._get_recommended_model_version()
+            if fallback_model_version:
+                chosen = self._load_state_for_version(fallback_model_version)
+                self.state = chosen
+                self.registry["active_model_version"] = fallback_model_version
+            else:
+                self.state = None
+                self.registry["active_model_version"] = None
+
+        self._save_registry()
+        payload = {
+            "deleted_model_version": model_version,
+            "active_model_version": self.registry.get("active_model_version"),
+            "baseline_model_version": self.registry.get("baseline_model_version"),
+            "registry_versions": len(self.registry.get("versions", [])),
+        }
+        if self.state is not None:
+            payload["training"] = self.get_training_info()
+        return payload
 
     def revert_to_baseline(self) -> dict:
         baseline_model_version = self.registry.get("baseline_model_version")
@@ -442,11 +569,13 @@ class YieldModelService:
     def get_training_info(self) -> dict:
         state = self._require_state()
         summary = self._state_summary(state)
+        entry = self._find_registry_entry(state.model_version)
         return {
             "best_model": summary["best_model"],
             "r2": summary["r2"],
             "samples": summary["samples"],
             "model_version": summary["model_version"],
+            "display_name": (entry or {}).get("display_name", self._default_display_name(summary["model_version"])),
             "created_at": summary["created_at"],
             "source": summary["source"],
             "mode": summary["mode"],
