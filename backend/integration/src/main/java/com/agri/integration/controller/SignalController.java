@@ -1,7 +1,7 @@
 package com.agri.integration.controller;
 
 import com.agri.integration.dto.RealtimeSignalResponse;
-import com.agri.integration.service.StubExternalSignalService;
+import com.agri.integration.service.ExternalSignalService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -11,9 +11,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/signals")
 public class SignalController {
 
-    private final StubExternalSignalService signalService;
+    private final ExternalSignalService signalService;
 
-    public SignalController(StubExternalSignalService signalService) {
+    public SignalController(ExternalSignalService signalService) {
         this.signalService = signalService;
     }
 
@@ -22,9 +22,6 @@ public class SignalController {
             @RequestParam String country,
             @RequestParam String crop
     ) {
-        double weatherRisk = signalService.computeWeatherRisk(country, crop);
-        double marketIndex = signalService.computeMarketIndex(country, crop);
-        double ndvi = signalService.computeNdvi(country, crop);
-        return new RealtimeSignalResponse(country, crop, weatherRisk, marketIndex, ndvi);
+        return signalService.realtime(country, crop);
     }
 }

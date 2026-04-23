@@ -1,12 +1,12 @@
-package com.agri.decision.config;
+package com.agri.integration.config;
 
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.web.client.RestClient;
 
 @Configuration
-@EnableConfigurationProperties(DecisionRiskProperties.class)
+@EnableConfigurationProperties(IntegrationSignalProperties.class)
 public class HttpClientConfig {
 
     @Bean

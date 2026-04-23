@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+import hashlib
 import json
 import os
 import uuid
@@ -46,7 +47,14 @@ class ModelState:
     model_version: str
     created_at: str
     source: str
+    dataset_source: str
     mode: str
+    year_min: int = 0
+    year_max: int = 0
+    dataset_hash: str = ""
+    evaluation_strategy: str = "unknown"
+    test_year_min: int = 0
+    test_year_max: int = 0
 
 
 @dataclass
@@ -56,12 +64,19 @@ class RegistryVersion:
     artifact_path: str
     created_at: str
     source: str
+    dataset_source: str
     mode: str
     promoted: bool
     best_model: str
     r2: float
     samples: int
     models: dict[str, dict[str, float]]
+    year_min: int = 0
+    year_max: int = 0
+    dataset_hash: str = ""
+    evaluation_strategy: str = "unknown"
+    test_year_min: int = 0
+    test_year_max: int = 0
 
 
 class YieldModelService:
@@ -153,8 +168,65 @@ class YieldModelService:
             ),
         }
 
+    def _dataset_hash(self, df: pd.DataFrame) -> str:
+        ordered = df[
+            [
+                "Area",
+                "Item",
+                "Year",
+                "average_rain_fall_mm_per_year",
+                "pesticides_tonnes",
+                "avg_temp",
+                "hg/ha_yield",
+            ]
+        ].sort_values(["Area", "Item", "Year"]).reset_index(drop=True)
+        payload = ordered.to_csv(index=False).encode("utf-8")
+        return hashlib.sha256(payload).hexdigest()
+
+    def _temporal_train_test_split(
+        self,
+        df_model: pd.DataFrame,
+    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series, str, int, int]:
+        years = sorted(df_model["Year"].dropna().astype(int).unique().tolist())
+        if len(years) >= 3:
+            n_test_years = max(1, int(round(len(years) * 0.2)))
+            test_years = set(years[-n_test_years:])
+            train_df = df_model[~df_model["Year"].isin(test_years)]
+            test_df = df_model[df_model["Year"].isin(test_years)]
+            if not train_df.empty and not test_df.empty:
+                return (
+                    train_df[FEATURES],
+                    test_df[FEATURES],
+                    train_df["hg/ha_yield"],
+                    test_df["hg/ha_yield"],
+                    "temporal_holdout",
+                    int(test_df["Year"].min()),
+                    int(test_df["Year"].max()),
+                )
+
+        X = df_model[FEATURES]
+        y = df_model["hg/ha_yield"]
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42
+        )
+        test_years_series = pd.to_numeric(X_test["Year"], errors="coerce")
+        test_year_min = int(test_years_series.min()) if not test_years_series.isna().all() else 0
+        test_year_max = int(test_years_series.max()) if not test_years_series.isna().all() else 0
+        return (
+            X_train,
+            X_test,
+            y_train,
+            y_test,
+            "random_split_fallback",
+            test_year_min,
+            test_year_max,
+        )
+
     def _train_state(self, df: pd.DataFrame, source: str, mode: str) -> ModelState:
         df = self._prepare_dataframe(df)
+        year_min = int(df["Year"].min())
+        year_max = int(df["Year"].max())
+        dataset_hash = self._dataset_hash(df)
 
         le_area = LabelEncoder()
         le_item = LabelEncoder()
@@ -163,11 +235,8 @@ class YieldModelService:
         df_model["Area_encoded"] = le_area.fit_transform(df_model["Area"])
         df_model["Item_encoded"] = le_item.fit_transform(df_model["Item"])
 
-        X = df_model[FEATURES]
-        y = df_model["hg/ha_yield"]
-
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42
+        X_train, X_test, y_train, y_test, evaluation_strategy, test_year_min, test_year_max = (
+            self._temporal_train_test_split(df_model)
         )
 
         results: dict[str, TrainedModelResult] = {}
@@ -194,11 +263,25 @@ class YieldModelService:
             model_version=self._new_model_version(),
             created_at=self._utc_now_iso(),
             source=source,
+            dataset_source=source,
             mode=mode,
+            year_min=year_min,
+            year_max=year_max,
+            dataset_hash=dataset_hash,
+            evaluation_strategy=evaluation_strategy,
+            test_year_min=test_year_min,
+            test_year_max=test_year_max,
         )
 
     def _state_summary(self, state: ModelState) -> dict:
         best = state.results[state.best_model_name]
+        year_min = int(getattr(state, "year_min", int(state.df["Year"].min())))
+        year_max = int(getattr(state, "year_max", int(state.df["Year"].max())))
+        dataset_hash = str(getattr(state, "dataset_hash", self._dataset_hash(state.df)))
+        dataset_source = str(getattr(state, "dataset_source", getattr(state, "source", "unknown")))
+        evaluation_strategy = str(getattr(state, "evaluation_strategy", "unknown"))
+        test_year_min = int(getattr(state, "test_year_min", 0))
+        test_year_max = int(getattr(state, "test_year_max", 0))
         return {
             "best_model": state.best_model_name,
             "r2": float(best.r2),
@@ -206,7 +289,14 @@ class YieldModelService:
             "model_version": state.model_version,
             "created_at": state.created_at,
             "source": state.source,
+            "dataset_source": dataset_source,
             "mode": state.mode,
+            "year_min": year_min,
+            "year_max": year_max,
+            "dataset_hash": dataset_hash,
+            "evaluation_strategy": evaluation_strategy,
+            "test_year_min": test_year_min,
+            "test_year_max": test_year_max,
             "models": {
                 name: {
                     "MAE": float(result.mae),
@@ -270,6 +360,27 @@ class YieldModelService:
             if row.get("display_name") != display_name:
                 changed = True
             row["display_name"] = display_name
+            if "year_min" not in row:
+                row["year_min"] = 0
+                changed = True
+            if "year_max" not in row:
+                row["year_max"] = 0
+                changed = True
+            if "dataset_hash" not in row:
+                row["dataset_hash"] = ""
+                changed = True
+            if "dataset_source" not in row:
+                row["dataset_source"] = str(row.get("source") or "unknown")
+                changed = True
+            if "evaluation_strategy" not in row:
+                row["evaluation_strategy"] = "unknown"
+                changed = True
+            if "test_year_min" not in row:
+                row["test_year_min"] = 0
+                changed = True
+            if "test_year_max" not in row:
+                row["test_year_max"] = 0
+                changed = True
             normalized_versions.append(row)
 
         self.registry["versions"] = normalized_versions
@@ -324,12 +435,19 @@ class YieldModelService:
             artifact_path=str(artifact_path),
             created_at=state.created_at,
             source=state.source,
+            dataset_source=summary["dataset_source"],
             mode=state.mode,
             promoted=promoted,
             best_model=summary["best_model"],
             r2=summary["r2"],
             samples=summary["samples"],
             models=summary["models"],
+            year_min=summary["year_min"],
+            year_max=summary["year_max"],
+            dataset_hash=summary["dataset_hash"],
+            evaluation_strategy=summary["evaluation_strategy"],
+            test_year_min=summary["test_year_min"],
+            test_year_max=summary["test_year_max"],
         )
 
         if existing:
@@ -544,6 +662,10 @@ class YieldModelService:
             "r2": active_summary["r2"],
             "samples": active_summary["samples"],
             "model_version": active_summary.get("model_version"),
+            "year_min": active_summary.get("year_min"),
+            "year_max": active_summary.get("year_max"),
+            "dataset_hash": active_summary.get("dataset_hash"),
+            "dataset_source": active_summary.get("dataset_source"),
             "models": active_summary.get("models", {}),
             "promoted": promoted,
             "promotion_reason": promotion_reason,
@@ -554,7 +676,12 @@ class YieldModelService:
                 "model_version": candidate_summary["model_version"],
                 "created_at": candidate_summary["created_at"],
                 "source": candidate_summary["source"],
+                "dataset_source": candidate_summary["dataset_source"],
                 "mode": candidate_summary["mode"],
+                "year_min": candidate_summary["year_min"],
+                "year_max": candidate_summary["year_max"],
+                "dataset_hash": candidate_summary["dataset_hash"],
+                "evaluation_strategy": candidate_summary["evaluation_strategy"],
                 "models": candidate_summary["models"],
             },
             "active_model_version": self.registry.get("active_model_version"),
@@ -578,7 +705,18 @@ class YieldModelService:
             "display_name": (entry or {}).get("display_name", self._default_display_name(summary["model_version"])),
             "created_at": summary["created_at"],
             "source": summary["source"],
+            "dataset_source": summary["dataset_source"],
             "mode": summary["mode"],
+            "year_min": summary["year_min"],
+            "year_max": summary["year_max"],
+            "dataset_hash": summary["dataset_hash"],
+            "evaluation_strategy": summary["evaluation_strategy"],
+            "test_year_min": summary["test_year_min"],
+            "test_year_max": summary["test_year_max"],
+            "data_coverage": {
+                "year_min": summary["year_min"],
+                "year_max": summary["year_max"],
+            },
             "models": summary["models"],
         }
 
@@ -654,6 +792,9 @@ class YieldModelService:
         return {
             "model": state.best_model_name,
             "model_version": state.model_version,
+            "year_min": int(getattr(state, "year_min", int(state.df["Year"].min()))),
+            "year_max": int(getattr(state, "year_max", int(state.df["Year"].max()))),
+            "dataset_source": str(getattr(state, "dataset_source", getattr(state, "source", "unknown"))),
             "predicted_yield": prediction,
         }
 
@@ -699,6 +840,7 @@ class YieldModelService:
             raise ValueError("Données historiques insuffisantes pour cette combinaison pays/culture")
 
         latest_year = int(subset["Year"].max())
+        year_min = int(subset["Year"].min())
         rain_base = float(subset["average_rain_fall_mm_per_year"].median())
         temp_base = float(subset["avg_temp"].median())
         pesticides_base = float(subset["pesticides_tonnes"].median())
@@ -707,6 +849,7 @@ class YieldModelService:
         return {
             "country": country,
             "crop": crop,
+            "year_min": year_min,
             "latest_year": latest_year,
             "historical_mean": historical_mean,
             "rain_base": rain_base,
@@ -1064,6 +1207,10 @@ class YieldModelService:
             "best_model": best_model_name,
             "r2": state.results[best_model_name].r2,
             "model_version": state.model_version,
+            "year_min": int(getattr(state, "year_min", int(state.df["Year"].min()))),
+            "year_max": int(getattr(state, "year_max", int(state.df["Year"].max()))),
+            "dataset_hash": str(getattr(state, "dataset_hash", self._dataset_hash(state.df))),
+            "dataset_source": str(getattr(state, "dataset_source", getattr(state, "source", "unknown"))),
             "feature_importance": [
                 {"feature": str(feature), "importance": float(value)}
                 for feature, value in importance.items()

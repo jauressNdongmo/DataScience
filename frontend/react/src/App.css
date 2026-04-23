@@ -65,6 +65,11 @@
   text-align: center;
 }
 
+.upload-zone.disabled {
+  cursor: not-allowed;
+  opacity: 0.75;
+}
+
 .upload-zone span {
   display: block;
   color: #fff;
@@ -347,6 +352,92 @@
   margin-top: 18px;
 }
 
+.trust-panel {
+  margin-top: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 12px;
+  padding: 12px;
+  background: rgba(7, 24, 16, 0.28);
+}
+
+.trust-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.trust-panel-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 0.78rem;
+  margin: 5px 0;
+  color: #ecf7ed;
+}
+
+.trust-panel-line code {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.72rem;
+  color: #d8f3dc;
+}
+
+.trust-signal-head {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.76rem;
+}
+
+.trust-signal-status {
+  margin-top: 6px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.trust-signal-status.healthy {
+  background: rgba(76, 175, 80, 0.18);
+  color: #d4ffd8;
+}
+
+.trust-signal-status.degraded {
+  background: rgba(232, 130, 12, 0.2);
+  color: #ffe8cc;
+}
+
+.trust-sources {
+  margin-top: 8px;
+}
+
+.trust-source-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.74rem;
+  margin-top: 4px;
+}
+
+.trust-warnings {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.15);
+}
+
+.trust-warning-item {
+  font-size: 0.73rem;
+  color: #ffe7cc;
+  margin-top: 4px;
+}
+
 .plot-grid.two {
   margin-top: 14px;
   display: grid;
@@ -624,6 +715,12 @@
 .model-field-wrap select {
   padding: 8px 10px;
   font-size: 0.8rem;
+}
+
+.model-readonly-note {
+  margin-top: 8px;
+  font-size: 0.75rem;
+  color: #fbd8b4;
 }
 
 .model-table-wrap {
@@ -918,6 +1015,7 @@
   .navbar-badge {
     display: none;
   }
+
 }
 
 @keyframes spin {

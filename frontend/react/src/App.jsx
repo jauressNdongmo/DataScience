@@ -6,6 +6,12 @@ import "./App.css";
 const API_ROOT =
   import.meta.env.VITE_ML_API_BASE_URL ||
   `${import.meta.env.VITE_API_BASE_URL || "http://localhost:8081"}/api/ml`;
+const INTEGRATION_API_ROOT =
+  import.meta.env.VITE_INTEGRATION_API_BASE_URL ||
+  `${import.meta.env.VITE_API_BASE_URL || "http://localhost:8081"}/api/integration`;
+const DEFAULT_TENANT_ID = import.meta.env.VITE_TENANT_ID || "demo-tenant";
+const DEFAULT_USER_ID = import.meta.env.VITE_USER_ID || "demo-user";
+const DEFAULT_USER_ROLES = import.meta.env.VITE_USER_ROLES || "ROLE_ADMIN";
 
 const TABS = [
   { id: "overview", label: "Vue d'ensemble" },
@@ -80,7 +86,35 @@ function modelDisplayName(entry) {
   return name || shortModelVersion(entry.model_version);
 }
 
+function extractErrorMessage(err, fallback) {
+  return err?.response?.data?.message || err?.response?.data?.detail || err?.message || fallback;
+}
+
+function formatFreshness(seconds) {
+  const safe = Number.isFinite(Number(seconds)) ? Math.max(0, Number(seconds)) : 0;
+  if (safe < 60) {
+    return `${safe}s`;
+  }
+  if (safe < 3600) {
+    return `${Math.floor(safe / 60)} min`;
+  }
+  return `${Math.floor(safe / 3600)} h`;
+}
+
 export default function App() {
+  const [tenantId] = useState(DEFAULT_TENANT_ID);
+  const [userId] = useState(DEFAULT_USER_ID);
+  const [userRoles] = useState(
+    DEFAULT_USER_ROLES.split(",")
+      .map((role) => role.trim())
+      .filter(Boolean)
+  );
+
+  const isAdmin = userRoles.includes("ROLE_ADMIN");
+  const isAnalyst = isAdmin || userRoles.includes("ROLE_ANALYST");
+  const canUploadDataset = isAnalyst;
+  const canManageModels = isAdmin;
+
   const [activeTab, setActiveTab] = useState("overview");
   const [uploading, setUploading] = useState(false);
   const [globalLoading, setGlobalLoading] = useState(false);
@@ -117,14 +151,59 @@ export default function App() {
   const [alertForm, setAlertForm] = useState(ALERT_DEFAULTS);
   const [alertResult, setAlertResult] = useState(null);
   const [alertLoading, setAlertLoading] = useState(false);
+  const [trustSignal, setTrustSignal] = useState(null);
+  const [trustSignalLoading, setTrustSignalLoading] = useState(false);
 
   const [stateChecked, setStateChecked] = useState(false);
   const simRequestRef = useRef(0);
   const alertRequestRef = useRef(0);
+  const availableTabs = useMemo(
+    () =>
+      TABS.filter((tab) => {
+        if (tab.id === "models") {
+          return isAdmin;
+        }
+        if (tab.id === "performance") {
+          return isAnalyst;
+        }
+        return true;
+      }),
+    [isAdmin, isAnalyst]
+  );
+  const trustSelection = useMemo(() => {
+    if (activeTab === "alerts" && alertCountry && alertCrop) {
+      return { country: alertCountry, crop: alertCrop };
+    }
+    if (simCountry && simCrop) {
+      return { country: simCountry, crop: simCrop };
+    }
+    if (countries[0]) {
+      return { country: countries[0], crop: "" };
+    }
+    return { country: "", crop: "" };
+  }, [activeTab, alertCountry, alertCrop, simCountry, simCrop, countries]);
 
   useEffect(() => {
+    axios.defaults.headers.common["X-Tenant-Id"] = tenantId;
+    axios.defaults.headers.common["X-User-Id"] = userId;
+    axios.defaults.headers.common["X-User-Roles"] = userRoles.join(",");
+    delete axios.defaults.headers.common.Authorization;
     void bootstrapFromServer();
-  }, []);
+  }, [tenantId, userId, userRoles]);
+
+  useEffect(() => {
+    if (!availableTabs.some((tab) => tab.id === activeTab)) {
+      setActiveTab(availableTabs[0]?.id || "overview");
+    }
+  }, [availableTabs, activeTab]);
+
+  useEffect(() => {
+    if (!datasetLoaded || !trustSelection.country || !trustSelection.crop) {
+      setTrustSignal(null);
+      return;
+    }
+    void loadTrustSignal(trustSelection.country, trustSelection.crop);
+  }, [datasetLoaded, trustSelection.country, trustSelection.crop]);
 
   useEffect(() => {
     if (!datasetLoaded || !simCountry) {
@@ -225,7 +304,11 @@ export default function App() {
       return {
         best_model: payload.model,
         r2: payload.r2,
-        samples: payload.samples
+        samples: payload.samples,
+        year_min: payload.year_min,
+        year_max: payload.year_max,
+        dataset_hash: payload.dataset_hash,
+        dataset_source: payload.dataset_source || payload.source
       };
     }
     return null;
@@ -275,7 +358,7 @@ export default function App() {
         setAlertCountry((prev) => (countryList.includes(prev) ? prev : countryList[0]));
       }
     } catch (err) {
-      setError(err?.response?.data?.detail || err?.message || "Impossible de charger le dashboard");
+      setError(extractErrorMessage(err, "Impossible de charger le dashboard"));
       setDatasetLoaded(false);
     } finally {
       setGlobalLoading(false);
@@ -305,7 +388,7 @@ export default function App() {
       await loadDashboardData(response.data);
       setActiveTab("overview");
     } catch (err) {
-      setError(err?.response?.data?.detail || err?.message || "Échec du chargement du CSV");
+      setError(extractErrorMessage(err, "Échec du chargement du CSV"));
     } finally {
       setUploading(false);
       event.target.value = "";
@@ -319,7 +402,7 @@ export default function App() {
       setSimCrops(cropList);
       setSimCrop((prev) => (cropList.includes(prev) ? prev : cropList[0] || ""));
     } catch (err) {
-      setError(err?.response?.data?.detail || err?.message || "Impossible de charger les cultures (simulateur)");
+      setError(extractErrorMessage(err, "Impossible de charger les cultures (simulateur)"));
     }
   }
 
@@ -330,7 +413,21 @@ export default function App() {
       setAlertCrops(cropList);
       setAlertCrop((prev) => (cropList.includes(prev) ? prev : cropList[0] || ""));
     } catch (err) {
-      setError(err?.response?.data?.detail || err?.message || "Impossible de charger les cultures (alertes)");
+      setError(extractErrorMessage(err, "Impossible de charger les cultures (alertes)"));
+    }
+  }
+
+  async function loadTrustSignal(country, crop) {
+    setTrustSignalLoading(true);
+    try {
+      const response = await axios.get(`${INTEGRATION_API_ROOT}/signals/realtime`, {
+        params: { country, crop }
+      });
+      setTrustSignal(response.data || null);
+    } catch {
+      setTrustSignal(null);
+    } finally {
+      setTrustSignalLoading(false);
     }
   }
 
@@ -353,7 +450,7 @@ export default function App() {
     } catch (err) {
       setSimContext(null);
       setSimResult(null);
-      setError(err?.response?.data?.detail || err?.message || "Impossible de charger le contexte de simulation");
+      setError(extractErrorMessage(err, "Impossible de charger le contexte de simulation"));
     }
   }
 
@@ -375,7 +472,7 @@ export default function App() {
       if (requestId !== simRequestRef.current) {
         return;
       }
-      setError(err?.response?.data?.detail || err?.message || "Échec de la simulation");
+      setError(extractErrorMessage(err, "Échec de la simulation"));
       setSimResult(null);
     } finally {
       if (requestId === simRequestRef.current) {
@@ -402,7 +499,7 @@ export default function App() {
       if (requestId !== alertRequestRef.current) {
         return;
       }
-      setError(err?.response?.data?.detail || err?.message || "Échec de la génération d'alertes");
+      setError(extractErrorMessage(err, "Échec de la génération d'alertes"));
       setAlertResult(null);
     } finally {
       if (requestId === alertRequestRef.current) {
@@ -424,7 +521,7 @@ export default function App() {
       setFineTuneResult(null);
       await loadDashboardData();
     } catch (err) {
-      setError(err?.response?.data?.detail || err?.message || "Impossible d'activer ce modèle");
+      setError(extractErrorMessage(err, "Impossible d'activer ce modèle"));
     } finally {
       setModelActionLoading(false);
     }
@@ -438,7 +535,7 @@ export default function App() {
       setFineTuneResult(null);
       await loadDashboardData();
     } catch (err) {
-      setError(err?.response?.data?.detail || err?.message || "Impossible de revenir au modèle de base");
+      setError(extractErrorMessage(err, "Impossible de revenir au modèle de base"));
     } finally {
       setModelActionLoading(false);
     }
@@ -463,7 +560,7 @@ export default function App() {
       });
       await loadDashboardData();
     } catch (err) {
-      setError(err?.response?.data?.detail || err?.message || "Impossible de renommer ce modèle");
+      setError(extractErrorMessage(err, "Impossible de renommer ce modèle"));
     } finally {
       setModelActionLoading(false);
     }
@@ -481,7 +578,7 @@ export default function App() {
       setFineTuneResult(null);
       await loadDashboardData();
     } catch (err) {
-      setError(err?.response?.data?.detail || err?.message || "Impossible de supprimer ce modèle");
+      setError(extractErrorMessage(err, "Impossible de supprimer ce modèle"));
     } finally {
       setModelActionLoading(false);
     }
@@ -545,9 +642,20 @@ export default function App() {
         </div>
         <h2>Chargement des données</h2>
         <hr />
-        <label className="upload-zone">
-          <span>{uploading ? "Chargement en cours..." : "Importer yield_df.csv"}</span>
-          <input type="file" accept=".csv" onChange={handleUpload} disabled={uploading} />
+        <label className={`upload-zone ${!canUploadDataset ? "disabled" : ""}`}>
+          <span>
+            {uploading
+              ? "Chargement en cours..."
+              : canUploadDataset
+                ? "Importer yield_df.csv"
+                : "Import réservé admin/analyste"}
+          </span>
+          <input
+            type="file"
+            accept=".csv"
+            onChange={handleUpload}
+            disabled={uploading || !canUploadDataset}
+          />
         </label>
         <hr />
         <p className="sidebar-source">Données sources : FAO / Kaggle</p>
@@ -562,6 +670,82 @@ export default function App() {
               <div className="card-footer">Précision (R²) : {fmt(training.r2, 4)}</div>
               <div className="card-footer">Nom : {training.display_name || shortModelVersion(training.model_version)}</div>
               <div className="card-footer">Version : {shortModelVersion(training.model_version)}</div>
+            </div>
+
+            <div className="trust-panel">
+              <div className="trust-panel-title">
+                <span className="icon">verified_user</span> Confiance Décision
+              </div>
+              <div className="trust-panel-line">
+                <span>Tenant</span>
+                <strong>{tenantId}</strong>
+              </div>
+              <div className="trust-panel-line">
+                <span>Utilisateur</span>
+                <strong>{userId}</strong>
+              </div>
+              <div className="trust-panel-line">
+                <span>Rôles</span>
+                <strong>{userRoles.join(", ") || "-"}</strong>
+              </div>
+              <div className="trust-panel-line">
+                <span>Version modèle</span>
+                <code>{shortModelVersion(training.model_version)}</code>
+              </div>
+              <div className="trust-panel-line">
+                <span>Couverture temporelle</span>
+                <strong>{`${training.year_min || "-"} - ${training.year_max || "-"}`}</strong>
+              </div>
+              <div className="trust-panel-line">
+                <span>Source dataset</span>
+                <strong>{training.dataset_source || training.source || "-"}</strong>
+              </div>
+              <div className="trust-panel-line">
+                <span>Hash dataset</span>
+                <code>{shortModelVersion(training.dataset_hash)}</code>
+              </div>
+              <div className="trust-panel-line">
+                <span>Évaluation</span>
+                <strong>{training.evaluation_strategy || "-"}</strong>
+              </div>
+
+              <div className="trust-signal-head">
+                <span>Signaux externes</span>
+                <strong>
+                  {trustSignalLoading
+                    ? "chargement..."
+                    : trustSignal
+                      ? `fraîcheur ${formatFreshness(trustSignal.signalFreshnessSeconds)}`
+                      : "indisponible"}
+                </strong>
+              </div>
+              <div
+                className={`trust-signal-status ${
+                  !trustSignal || trustSignal.degraded ? "degraded" : "healthy"
+                }`}
+              >
+                {!trustSignal ? "Signal indisponible" : trustSignal.degraded ? "Mode dégradé" : "Mode nominal"}
+                {trustSignal?.confidence !== undefined ? ` • confiance ${fmt(trustSignal.confidence, 2)}` : ""}
+              </div>
+              {trustSignal?.sources && (
+                <div className="trust-sources">
+                  {Object.entries(trustSignal.sources).map(([key, value]) => (
+                    <div key={key} className="trust-source-item">
+                      <span>{key}</span>
+                      <strong>{value}</strong>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {trustSignal?.warnings?.length > 0 && (
+                <div className="trust-warnings">
+                  {trustSignal.warnings.slice(0, 2).map((warning, index) => (
+                    <div key={`${warning}-${index}`} className="trust-warning-item">
+                      {warning}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {modelRegistry && (
@@ -582,19 +766,23 @@ export default function App() {
                     <div className="fine-tune-row">Actif R² : {fmt(training.r2, 4)}</div>
                     <div className="fine-tune-row">Candidat R² : {fmt(fineTuneResult.candidate.r2, 4)}</div>
                     <div className="fine-tune-recommendation">{fineTuneRecommendation?.message}</div>
-                    <div className="model-actions-row">
-                      <button
-                        type="button"
-                        className="primary-btn mini"
-                        disabled={modelActionLoading || !fineTuneRecommendation?.recommendedModelVersion}
-                        onClick={() => activateModelVersion(fineTuneRecommendation?.recommendedModelVersion)}
-                      >
-                        {modelActionLoading ? "Application..." : "Appliquer recommandé"}
-                      </button>
-                      <button type="button" className="ghost-btn" onClick={keepCurrentModel} disabled={modelActionLoading}>
-                        Garder l'actif
-                      </button>
-                    </div>
+                    {canManageModels ? (
+                      <div className="model-actions-row">
+                        <button
+                          type="button"
+                          className="primary-btn mini"
+                          disabled={modelActionLoading || !fineTuneRecommendation?.recommendedModelVersion}
+                          onClick={() => activateModelVersion(fineTuneRecommendation?.recommendedModelVersion)}
+                        >
+                          {modelActionLoading ? "Application..." : "Appliquer recommandé"}
+                        </button>
+                        <button type="button" className="ghost-btn" onClick={keepCurrentModel} disabled={modelActionLoading}>
+                          Garder l'actif
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="model-readonly-note">Activation réservée au rôle admin.</div>
+                    )}
                   </div>
                 )}
 
@@ -603,6 +791,7 @@ export default function App() {
                   <select
                     value={selectedModelVersion}
                     onChange={(event) => setSelectedModelVersion(event.target.value)}
+                    disabled={!canManageModels}
                   >
                     {(modelRegistry.versions || []).map((entry) => (
                       <option key={entry.model_version} value={entry.model_version}>
@@ -616,7 +805,7 @@ export default function App() {
                   <button
                     type="button"
                     className="secondary-btn mini"
-                    disabled={modelActionLoading || !selectedModelVersion}
+                    disabled={modelActionLoading || !selectedModelVersion || !canManageModels}
                     onClick={() => activateModelVersion(selectedModelVersion)}
                   >
                     {modelActionLoading ? "Activation..." : "Activer ce modèle"}
@@ -624,12 +813,15 @@ export default function App() {
                   <button
                     type="button"
                     className="danger-btn"
-                    disabled={modelActionLoading || !modelRegistry.baseline_model_version}
+                    disabled={modelActionLoading || !modelRegistry.baseline_model_version || !canManageModels}
                     onClick={revertToBaseline}
                   >
                     Revenir au modèle de base
                   </button>
                 </div>
+                {!canManageModels && (
+                  <div className="model-readonly-note">Mode lecture seule pour ce rôle.</div>
+                )}
               </div>
             )}
           </>
@@ -678,7 +870,7 @@ export default function App() {
         {datasetLoaded && (
           <>
             <div className="tabs">
-              {TABS.map((tab) => (
+              {availableTabs.map((tab) => (
                 <button
                   key={tab.id}
                   type="button"
@@ -879,6 +1071,8 @@ export default function App() {
                           />
                         </div>
 
+                        <hr className="separator" />
+                        
                         <div className="plot-card">
                           <Plot
                             data={[
@@ -1043,6 +1237,7 @@ export default function App() {
                             <RecommendationPanel key={index} recommendation={reco} />
                           ))}
                         </div>
+                        <hr className="separator" />
                       </>
                     )}
                   </section>

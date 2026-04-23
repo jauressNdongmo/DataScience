@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import uuid
 
 import pandas as pd
 from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app.model import YieldModelService
@@ -25,6 +28,80 @@ async def compatibility_prefix_rewrite(request: Request, call_next):
             request.scope["path"] = path[len(prefix) :]
             break
     return await call_next(request)
+
+
+@app.middleware("http")
+async def attach_correlation_id(request: Request, call_next):
+    correlation_id = request.headers.get("X-Correlation-Id") or str(uuid.uuid4())
+    request.state.correlation_id = correlation_id
+    response = await call_next(request)
+    response.headers["X-Correlation-Id"] = correlation_id
+    return response
+
+
+def _error_payload(
+    request: Request,
+    code: str,
+    message: str,
+    details: dict | None = None,
+) -> dict:
+    correlation_id = getattr(request.state, "correlation_id", None) or request.headers.get(
+        "X-Correlation-Id"
+    )
+    return {
+        "code": code,
+        "message": message,
+        "details": details or {},
+        "correlationId": correlation_id,
+    }
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    message = str(exc.detail) if exc.detail is not None else "Erreur HTTP"
+    code = "HTTP_ERROR"
+    if exc.status_code == 400:
+        code = "BUSINESS_ERROR"
+    elif exc.status_code == 401:
+        code = "UNAUTHORIZED"
+    elif exc.status_code == 403:
+        code = "FORBIDDEN"
+    elif exc.status_code == 404:
+        code = "NOT_FOUND"
+    elif exc.status_code == 409:
+        code = "CONFLICT"
+    elif exc.status_code >= 500:
+        code = "INTERNAL_ERROR"
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=_error_payload(request, code, message, {"status": exc.status_code}),
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=400,
+        content=_error_payload(
+            request,
+            "VALIDATION_ERROR",
+            "Le payload est invalide.",
+            {"errors": exc.errors()},
+        ),
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content=_error_payload(
+            request,
+            "INTERNAL_ERROR",
+            "Une erreur interne est survenue.",
+        ),
+    )
 
 
 class TrainRequest(BaseModel):

@@ -3,8 +3,8 @@ package com.microservice.gateway.config;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import org.springframework.web.filter.CorsFilter;
+import org.springframework.web.cors.reactive.CorsWebFilter;
+import org.springframework.web.cors.reactive.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
 
@@ -12,10 +12,12 @@ import java.util.List;
 public class CorsGlobalConfiguration {
 
     @Bean
-    public CorsFilter corsFilter() {
+    public CorsWebFilter corsFilter() {
         CorsConfiguration corsConfig = new CorsConfiguration();
         corsConfig.setAllowCredentials(true);
         corsConfig.setAllowedOrigins(List.of(
+                "http://localhost:5173",
+                "http://127.0.0.1:5173",
                 "http://localhost:4200",
                 "http://localhost:8010",
                 "http://127.0.0.1:4200",
@@ -26,6 +28,6 @@ public class CorsGlobalConfiguration {
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", corsConfig);
-        return new CorsFilter(source);
+        return new CorsWebFilter(source);
     }
 }

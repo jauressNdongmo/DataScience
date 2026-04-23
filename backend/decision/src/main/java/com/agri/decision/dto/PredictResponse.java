@@ -2,6 +2,9 @@ package com.agri.decision.dto;
 
 public record PredictResponse(
         String model,
-        double predicted_yield
+        String model_version,
+        double predicted_yield,
+        Integer year_min,
+        Integer year_max
 ) {
 }

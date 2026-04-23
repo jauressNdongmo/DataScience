@@ -199,3 +199,164 @@ Mitigation: update doc obligatoire à chaque changement de contrat.
 5. Pipeline ML reproductible (baseline + fine-tune + activation).
 6. Jeu de tests de validation fonctionnelle.
 
+## 14. Zones à implémenter (plan d’exécution par service)
+Objectif: passer d’un prototype fonctionnel à une plateforme vendable, robuste et compréhensible pour les acteurs métier.
+
+### 14.1 Priorités globales
+- P0 (bloquant vente): sécurité, traçabilité, qualité des données, résilience décisionnelle.
+- P1 (forte valeur): notifications, reporting, batch décisionnel, gouvernance avancée.
+- P2 (scale): facturation, multi-région, MLOps avancé.
+
+### 14.2 Backlog par service existant
+| Service | Zone à implémenter | Priorité | Détails d’implémentation | Definition of Done |
+|---|---|---|---|---|
+| `gateway` | AuthN/AuthZ centralisée + propagation identité | P0 | Validation JWT, contrôle des rôles, propagation `X-User-Id` / `X-Tenant-Id`, rejet des requêtes non authentifiées | Endpoints protégés, tests d’accès par rôle, logs d’audit d’accès |
+| `gateway` | Rate limiting et protection API | P0 | Limite par clé API/tenant, anti-abus, quotas par plan | Limites configurables par tenant, métriques de rejet visibles |
+| `gateway` | Correlation IDs et standard d’erreur | P0 | Injection systématique `X-Correlation-Id`, format d’erreur unifié (`code`, `message`, `details`) | Tous les services renvoient un format homogène via Gateway |
+| `gateway` | Résilience de routage | P1 | Timeout, retry, circuit breaker sur routes critiques | Pannes d’un service ne bloquent pas toute la plateforme |
+| `configServer` | Templates de config par environnement | P0 | Structurer `dev/staging/prod`, secrets externalisés, valeurs par défaut sûres | Démarrage identique entre environnements, sans secret en dur |
+| `discoveryServer` | Durcissement prod | P1 | Health checks, tuning TTL/heartbeat, dashboard d’état | Tous les services détectés, alertes en cas de perte d’instance |
+| `agriData` | CRUD complet + versioning dataset | P0 | Ajouter update/delete/version dataset, provenance, hash dataset | Traçabilité complète de la donnée source à la décision |
+| `agriData` | Validation et qualité des données | P0 | Schéma strict, règles métier (bornes année/pluie/temp), rejet explicite des lignes invalides | Rapport de qualité disponible avant ingestion |
+| `agriData` | API de couverture temporelle | P0 | Endpoint `coverage` par pays/culture (`year_min`, `year_max`, `rows`) | Frontend et décision utilisent la même vérité temporelle |
+| `integration` | Remplacer le stub par adaptateurs réels | P0 | Connecteurs météo/marché/NDVI, mapping vers schéma canonique, fallback local | Signaux en production proviennent de vraies sources externes |
+| `integration` | Cache et gestion indisponibilités | P0 | Cache TTL, fallback sur dernière valeur valide, score de fraîcheur | Décision continue même en cas de panne fournisseur |
+| `integration` | Historisation des signaux | P1 | Stocker signaux et latences fournisseurs, rejouer l’historique | Audit possible des décisions passées |
+| `decision` | Moteur de règles configurable | P0 | Externaliser les poids/thresholds (pas hardcodés), versionner les policies | Ajustement métier sans recompilation |
+| `decision` | Explicabilité de la décision | P0 | Retourner contribution par facteur (`ml`, `weather`, `market`, `ndvi`) + niveau de confiance | Réponse exploitable par décideur non technique |
+| `decision` | Mode batch et priorisation | P1 | Endpoint d’analyse multi-zones, classement par criticité | Génération de listes d’actions régionales |
+| `ml-python` | Évaluation temporelle (anti fuite) | P0 | Séparer entraînement/validation par temps, pas seulement split aléatoire | Métriques robustes et crédibles en contexte réel |
+| `ml-python` | Contrat de couverture modèle | P0 | Inclure `year_min/year_max`, `dataset_hash`, `dataset_source` dans état/registry | Gouvernance claire des limites temporelles du modèle |
+| `ml-python` | Promotion contrôlée des candidats | P1 | Politique explicite: auto-promote, approval manuelle, rollback policy | Comportement de promotion prédictible et documenté |
+| `ml-python` | Détection de drift | P1 | Drift data/performance, alertes de recalibration | Alerte précoce avant dégradation opérationnelle |
+| `frontend/react` | Espace “Confiance décision” | P0 | Afficher source des signaux, fraîcheur, version modèle, limites temporelles | Décisions justifiées et compréhensibles |
+| `frontend/react` | Gestion des rôles et tenants | P0 | Vues conditionnées par rôle (admin/analyste/lecteur), périmètre tenant | Isolation fonctionnelle par organisation |
+| `frontend/react` | Export opérationnel | P1 | Export PDF/CSV des décisions, scénarios et alertes | Partage facile avec coopératives et autorités |
+| `frontend/react` | Gestion d’erreurs UX | P1 | Etats dégradés clairs (données partielles, source externe indisponible) | UX stable et non bloquante en incident |
+
+## 15. Services additionnels recommandés (pour un produit vendable)
+Ces services sont recommandés pour obtenir une offre réellement commercialisable.
+
+### 15.1 `identity-access-service` (P0)
+Rôle:
+- Authentification, gestion utilisateurs, rôles, tenants.
+- Émission et rotation des tokens.
+
+Contrats minimaux:
+- `POST /auth/login`
+- `POST /auth/refresh`
+- `GET /users/me`
+- `GET /tenants/{id}/members`
+- `POST /roles/assign`
+
+Pourquoi indispensable:
+- Sans IAM multi-tenant, le produit reste un démonstrateur technique.
+
+### 15.2 `audit-log-service` (P0)
+Rôle:
+- Journal append-only de toutes les actions critiques (activation modèle, upload dataset, décision générée).
+
+Contrats minimaux:
+- `POST /audit/events`
+- `GET /audit/events?tenantId=&from=&to=&type=`
+
+Pourquoi indispensable:
+- Confiance, conformité, relecture métier des décisions.
+
+### 15.3 `notification-service` (P1)
+Rôle:
+- Diffusion des alertes (email/SMS/WhatsApp/push) selon sévérité et zone.
+
+Contrats minimaux:
+- `POST /notifications/send`
+- `POST /notifications/rules`
+- `GET /notifications/history`
+
+Pourquoi indispensable:
+- La valeur métier repose sur l’action rapide, pas seulement l’affichage dashboard.
+
+### 15.4 `reporting-service` (P1)
+Rôle:
+- Génération de rapports périodiques (PDF/CSV) par culture, zone et période.
+
+Contrats minimaux:
+- `POST /reports/generate`
+- `GET /reports/{reportId}`
+
+Pourquoi utile:
+- Facilite la vente B2B institutionnelle (coopératives, ministères, ONG, agro-industrie).
+
+### 15.5 `billing-subscription-service` (P2)
+Rôle:
+- Plans, quotas, facturation, suivi consommation API.
+
+Pourquoi utile:
+- Nécessaire pour l’industrialisation commerciale, mais pas bloquant en phase pilote.
+
+## 16. Contrats transverses à standardiser (obligatoires)
+1. Tous les services doivent accepter et propager:
+- `X-Correlation-Id`
+- `X-Tenant-Id`
+- `X-User-Id`
+
+2. Toutes les réponses métier doivent exposer:
+- `timestamp`
+- `model_version` (si décision liée au ML)
+- `data_coverage` (`year_min`, `year_max`)
+- `signal_freshness` (si données externes)
+
+3. Standard d’erreur unique:
+```json
+{
+  "code": "INTEGRATION_TIMEOUT",
+  "message": "Le fournisseur météo ne répond pas",
+  "details": {},
+  "correlationId": "..."
+}
+```
+
+## 17. Plan d’implémentation recommandé (12 semaines)
+### Sprint 1-2 (P0 architecture fiable)
+- Standard d’erreur + correlation IDs.
+- Couverture temporelle dataset/modèle exposée partout.
+- Validation stricte des données dans `agriData`.
+
+### Sprint 3-4 (P0 sécurité et traçabilité)
+- `identity-access-service` + protection Gateway.
+- `audit-log-service` + événements critiques.
+
+### Sprint 5-6 (P0 décision robuste)
+- `integration` réel (au moins 1 fournisseur par signal) + fallback/cache.
+- `decision` explicable (contributions + confiance).
+
+### Sprint 7-8 (P1 valeur opérationnelle)
+- `notification-service`.
+- Export reporting.
+- Batch d’analyse multi-zones.
+
+### Sprint 9-10 (P1 qualité ML)
+- Validation temporelle ML + règles de promotion explicites.
+- Alertes de drift.
+
+### Sprint 11-12 (Go-to-market)
+- Durcissement performance/sécurité.
+- Test E2E multi-tenant.
+- Dossier de démo client (cas d’usage + KPIs + SLA).
+
+## 18. Critères “projet vendable” (Go/No-Go)
+Go si tous les points suivants sont vrais:
+1. Multi-tenant sécurisé en production pilote.
+2. Décisions traçables de bout en bout (qui, quand, avec quel modèle et quelles données).
+3. Sources externes réelles avec mécanisme de continuité de service.
+4. Alertes diffusables hors interface web (notification active).
+5. Rapport exploitable par décideur non technique.
+6. Taux de disponibilité et latence observés sur une période pilote documentée.
+
+## 19. Décision d’architecture recommandée
+Pour rester “propre et claire”:
+1. Conserver les services actuels (socle valide).
+2. Ajouter d’abord 3 services: `identity-access`, `audit-log`, `notification`.
+3. Implémenter `reporting` ensuite.
+4. Reporter `billing` après validation terrain.
+
+Cette trajectoire minimise la complexité initiale tout en maximisant la valeur commerciale et la confiance des acteurs concernés.
