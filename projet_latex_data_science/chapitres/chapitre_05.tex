@@ -7,7 +7,7 @@
 
 \subsection{Capacité prédictive supérieure}
 
-L'application développée dans le chapitre précédent l'a démontré~: les modèles d'apprentissage automatique (XGBoost, Random Forest) surpassent significativement les approches classiques de régression linéaire, avec un $R^2$ passant de 0.71 à 0.91. Ce gain de performance s'explique par la capacité de ces modèles à capturer des \textbf{interactions non-linéaires} entre les variables climatiques et agronomiques.
+L'application développée dans le chapitre précédent l'a démontré~: les modèles d'apprentissage automatique (XGBoost, Random Forest) surpassent les approches linéaires sur des données tabulaires agro-climatiques. Sur la baseline évaluée en découpage temporel strict, les performances restent robustes (chapitre~4), et certaines versions fine-tunées atteignent des niveaux de précision plus élevés selon le périmètre de données. Ce gain s'explique par la capacité de ces modèles à capturer des \textbf{interactions non-linéaires} entre variables climatiques et agronomiques.
 
 \subsection{Automatisation et scalabilité}
 
@@ -15,7 +15,7 @@ Un modèle entraîné peut, une fois déployé, effectuer des centaines de milli
 
 \subsection{Découverte de connaissances cachées}
 
-L'analyse de l'importance des variables (figure~\ref{fig:feature-importance}) a révélé des informations agronomiquement pertinentes que l'analyse descriptive seule n'aurait pas permis de quantifier~: le poids prépondérant de la pluviométrie, l'effet de seuil de la température, ou encore la relation non-linéaire entre pesticides et rendement.
+L'analyse de l'importance des variables (figure~\ref{fig:agriyield-vue-performance}) a révélé des informations agronomiquement pertinentes que l'analyse descriptive seule n'aurait pas permis de quantifier~: le poids prépondérant de la pluviométrie, l'effet de seuil de la température, ou encore la relation non-linéaire entre pesticides et rendement.
 
 \subsection{Aide à la décision en temps réel}
 
@@ -29,7 +29,7 @@ La plateforme AgriYield illustre comment les prédictions des modèles peuvent �
 \begin{itemize}[leftmargin=1.5cm, itemsep=3pt]
   \item \textbf{Granularité géographique}~: les données FAO sont agrégées à l'échelle nationale, masquant les disparités régionales importantes (ex.~: régions sahéliennes vs.~zones côtières au Cameroun).
   \item \textbf{Variables manquantes}~: des facteurs importants ne sont pas inclus~: type de sol, niveau d'irrigation, variétés cultivées, pratiques agricoles, accès aux marchés.
-  \item \textbf{Décalage temporel}~: les données s'arrêtent en 2013, limitant la pertinence des prédictions pour les conditions climatiques actuelles (réchauffement post-2013).
+  \item \textbf{Décalage temporel selon les sources}~: malgré une extension récente de la couverture, certaines composantes externes et certains pays présentent des séries moins fraîches que d'autres, ce qui peut dégrader la précision locale.
   \item \textbf{Biais de collecte}~: certains pays ont des systèmes statistiques moins fiables, introduisant une hétérogénéité dans la qualité des données.
 \end{itemize}
 
@@ -38,7 +38,7 @@ La plateforme AgriYield illustre comment les prédictions des modèles peuvent �
 \begin{itemize}[leftmargin=1.5cm, itemsep=3pt]
   \item \textbf{Surapprentissage potentiel}~: bien que contrôlé par la validation croisée, le risque demeure pour les cultures et pays peu représentés.
   \item \textbf{Défaut de causalité}~: les modèles capturent des corrélations statistiques, pas des relations causales. Un modèle qui prédit bien n'explique pas nécessairement pourquoi.
-  \item \textbf{Dérive de distribution (concept drift)}~: les patterns appris sur 1990--2013 peuvent devenir obsolètes face à des changements climatiques accélérés.
+  \item \textbf{Dérive de distribution (concept drift)}~: les patterns appris sur l'historique 1990--2024 peuvent devenir obsolètes face à des changements climatiques accélérés.
   \item \textbf{Interprétabilité limitée}~: XGBoost et les réseaux de neurones restent des \textit{boîtes noires} par rapport à la régression linéaire, ce qui peut freiner l'adoption par des décideurs non techniques.
 \end{itemize}
 

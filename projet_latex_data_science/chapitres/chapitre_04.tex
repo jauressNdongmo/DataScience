@@ -1,246 +1,402 @@
 \chapter{Application Pratique~: Prédiction du Rendement Agricole --- Plateforme AgriYield}
 
-\encadreobjectif{Montrer comment les modèles d'IA peuvent être mobilisés sur un cas d'étude concret afin de prédire le rendement agricole à l'échelle mondiale et de soutenir la planification et la prise de décision. Ce chapitre présente la plateforme \textbf{AgriYield} développée dans ce cadre.}
+\encadreobjectif{Présenter une implémentation complète, cohérente et traçable du thème \textbf{``Exploitation des données à l'aide des modèles d'IA''}, en expliquant clairement l'architecture, les pages de la plateforme, la gouvernance \textit{baseline/fine-tuning} et l'intérêt concret de comparer plusieurs modèles.}
 
 %--------------------------------------------------
-\section{Présentation du Cas d'Étude}
+\section{Justification du thème et du cas d'usage}
 
-\subsection{Contexte et enjeux}
-
-L'agriculture constitue un pilier économique fondamental pour de nombreux pays, en particulier en Afrique subsaharienne, où elle emploie une part importante de la population active et contribue significativement au PIB. La capacité à anticiper les rendements agricoles représente un levier stratégique pour~:
+Le thème de base du projet consiste à transformer des données hétérogènes en décisions exploitables. Dans AgriYield, cette logique est matérialisée par trois niveaux complémentaires~:
 \begin{itemize}[leftmargin=1.5cm]
-  \item La \textbf{sécurité alimentaire}~: anticiper les pénuries et orienter l'aide alimentaire.
-  \item L'\textbf{allocation optimale des ressources}~: engrais, pesticides, eau d'irrigation.
-  \item La \textbf{planification des politiques publiques}~: prix de soutien, subventions, stockage.
-  \item La \textbf{gestion des risques climatiques}~: adaptation face aux changements de pluviométrie et de température.
+  \item \textbf{Niveau données}~: ingestion d'historiques agricoles et consolidation de variables explicatives (pluie, température, pesticides).
+  \item \textbf{Niveau IA}~: entraînement multi-modèles, sélection, simulation de scénarios et génération d'alertes.
+  \item \textbf{Niveau décision}~: recommandation métier justifiée pour l'action publique/agronomique.
 \end{itemize}
 
-\subsection{La plateforme AgriYield}
+Le projet est donc une chaîne décisionnelle complète, et non un simple exercice d'entraînement de modèle.
 
-La figure~\ref{fig:agriyield-app} présente l'interface de la plateforme \textbf{AgriYield} développée dans le cadre de ce projet~: un système de prédiction et d'aide à la décision intégrant quatre modules principaux~: Analyse Historique, Modélisation \& Simulation, Système d'Alerte et Aide à la Décision.
+%--------------------------------------------------
+\section{Architecture technique implémentée}
 
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.90\textwidth]{chap4_agriyield_app.jpeg}
-  \caption{Interface de la plateforme AgriYield~: Système de Prédiction et d'Aide à la Décision Agricole}
-  \label{fig:agriyield-app}
-\end{figure}
-
-\subsection{Architecture et vues de la version finale}
-
-En complément des captures issues du premier rapport, nous présentons l'architecture de la solution développée ainsi que les principales vues fonctionnelles de l'interface finale afin de mieux documenter la traçabilité entre conception et implémentation.
+\subsection{Vue microservices}
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=0.92\textwidth]{arcitecture.png}
-  \caption{Architecture globale de la plateforme AgriYield (microservices, gateway, moteur ML et interface web)}
+  \includegraphics[width=0.95\textwidth]{arcitecture.png}
+  \caption{Architecture microservices de la plateforme AgriYield}
   \label{fig:agriyield-architecture-finale}
 \end{figure}
 
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.92\textwidth]{accueil.png}
-  \caption{Vue d'accueil de la plateforme AgriYield}
-  \label{fig:agriyield-vue-accueil}
-\end{figure}
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.92\textwidth]{page_simulation.png}
-  \caption{Module de simulation de scénarios climatiques}
-  \label{fig:agriyield-vue-simulation}
-\end{figure}
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.92\textwidth]{page_decision_alerte.png}
-  \caption{Module alertes et aide à la décision}
-  \label{fig:agriyield-vue-alertes}
-\end{figure}
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.92\textwidth]{page_analyse_perfomance.png}
-  \caption{Vue d'analyse des performances du modèle}
-  \label{fig:agriyield-vue-performance}
-\end{figure}
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.92\textwidth]{page_gestion_modele.png}
-  \caption{Interface de gouvernance et gestion des versions de modèles}
-  \label{fig:agriyield-vue-gouvernance}
-\end{figure}
-
-%--------------------------------------------------
-\section{Présentation du Jeu de Données}
-
-\subsection{Source et description}
-
-Le jeu de données utilisé est issu de la \textbf{FAO} (Organisation des Nations Unies pour l'Alimentation et l'Agriculture) et mis à disposition via la plateforme \textbf{Kaggle} (\texttt{yield\_df.csv}). Il couvre \textbf{101 pays}, \textbf{10 cultures principales} et s'étend sur la période \textbf{1990--2013}, soit environ 28\,242 enregistrements.
-
-\subsection{Structure du jeu de données}
+\textbf{Lecture de la figure~:} le frontend React passe par un gateway unique qui distribue les requêtes vers les services métier (AgriData, Integration, Decision, ML), avec Discovery/Config pour la gouvernance Spring.
 
 \begin{table}[H]
 \centering
-\caption{Extrait du jeu de données AgriYield (premières observations)}
-\label{tab:extrait-donnees}
-\renewcommand{\arraystretch}{1.3}
-\begin{tabularx}{\textwidth}{|c|p{2cm}|c|r|r|r|r|}
+\caption{Services, ports et responsabilités}
+\label{tab:services-architecture}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabularx}{\textwidth}{|>{\bfseries}p{2.4cm}|c|>{\RaggedRight\arraybackslash}X|>{\RaggedRight\arraybackslash}X|}
 \hline
-\rowcolor{TableHeader}\textbf{Idx} & \textbf{Area} & \textbf{Item} & \textbf{Year} & \textbf{hg/ha} & \textbf{Rain (mm)} & \textbf{Temp ($^\circ$C)} \\
+\rowcolor{TableHeader}
+Service & Port & Responsabilité & Endpoints/usage \\
 \hline
-0 & Albania & Maize & 1990 & 36\,613 & 1\,485 & 16.37 \\
+Frontend React & 5173 & Interface utilisateur (tableaux de bord, simulation, alertes, gouvernance) & --- \\
 \hline
-1 & Albania & Potatoes & 1990 & 66\,667 & 1\,485 & 16.37 \\
+Gateway & 8081 & Entrée API unique, routage, CORS, contexte de requête & /api/agri-data/*, /api/integration/*, /api/decision/*, /api/ml/* \\
 \hline
-2 & Albania & Rice, paddy & 1990 & 23\,333 & 1\,485 & 16.37 \\
+ML Python (FastAPI) & 8000 & Entraînement, prédiction, simulateur, alertes, performances, registre & /train/upload, /overview, /scenario/simulate, /alerts, /performance \\
 \hline
-3 & Albania & Sorghum & 1990 & 12\,500 & 1\,485 & 16.37 \\
+AgriData & 8093 & Données agricoles structurées et couverture temporelle & /records, /records/coverage, /records/datasets \\
 \hline
-4 & Albania & Soybeans & 1990 & 7\,000 & 1\,485 & 16.37 \\
+Integration & 8095 & Signaux externes (météo, marché, NDVI) avec fallback & /signals/realtime \\
 \hline
-\ldots & \ldots & \ldots & \ldots & \ldots & \ldots & \ldots \\
+Decision & 8094 & Fusion ML + signaux externes + score de risque + recommandations & /analysis \\
+\hline
+Discovery Server & 8090 & Registre de services (Eureka) & /eureka \\
+\hline
+Config Server & 8888 & Configuration centralisée (config-repo) & /\{service\}/\{profile\} \\
 \hline
 \end{tabularx}
 \end{table}
 
-Les variables disponibles sont~:
-\begin{itemize}[leftmargin=1.5cm, itemsep=2pt]
-  \item \texttt{Area}~: pays/zone géographique (catégoriel, 101 modalités)
-  \item \texttt{Item}~: type de culture (catégoriel~: maïs, riz, blé, pommes de terre, soja, sorgho, patate douce, manioc, igname, plantain)
-  \item \texttt{Year}~: année (numérique, 1990--2013)
-  \item \texttt{hg/ha\_yield}~: \textbf{rendement cible} en hectogrammes par hectare
-  \item \texttt{average\_rain\_fall\_mm\_per\_year}~: pluviométrie annuelle moyenne (mm)
-  \item \texttt{pesticides\_tonnes}~: quantité de pesticides utilisés (tonnes)
-  \item \texttt{avg\_temp}~: température moyenne annuelle ($^\circ$C)
-\end{itemize}
+\subsection{Flux décisionnel}
 
-%--------------------------------------------------
-\section{Préparation des Données pour la Modélisation}
-
-\subsection{Audit de qualité initial}
-
-L'audit révèle~:
-\begin{itemize}[leftmargin=1.5cm, itemsep=2pt]
-  \item \textbf{Valeurs manquantes}~: essentiellement dans \texttt{pesticides\_tonnes} (imputation par médiane groupée par pays/culture).
-  \item \textbf{Pas de doublons} détectés.
-  \item \textbf{Quelques outliers}~: rendements extrêmes pour certaines cultures sous conditions favorables (Pays-Bas, pommes de terre), conservés car légitimes.
-\end{itemize}
-
-\subsection{Encodage et transformation}
-
-\begin{enumerate}[leftmargin=1.5cm, itemsep=3pt]
-  \item \textbf{Encodage ordinal}~: les variables \texttt{Area} et \texttt{Item} sont converties en entiers (\texttt{LabelEncoder}).
-  \item \textbf{Standardisation Z-score}~: appliquée aux variables numériques (\texttt{Year}, \texttt{average\_rain\_fall}, \texttt{pesticides\_tonnes}, \texttt{avg\_temp}).
-  \item \textbf{Séparation}~: 80\,\% entraînement / 20\,\% test avec graine aléatoire fixée (\texttt{random\_state=42}).
+\begin{enumerate}[leftmargin=1.5cm]
+  \item L'utilisateur agit sur l'interface React.
+  \item Le Gateway route vers le bon service.
+  \item Le service ML produit les prédictions et métriques du modèle actif.
+  \item Le service Integration fournit les signaux externes avec fraîcheur et confiance.
+  \item Le service Decision consolide les contributions et calcule le niveau de risque.
+  \item Le frontend restitue les résultats avec contexte de confiance (version, source, couverture temporelle).
 \end{enumerate}
 
 %--------------------------------------------------
-\section{Choix des Modèles d'IA}
+\section{Description claire de chaque page de la plateforme}
 
-Cinq modèles sont entraînés et comparés, selon la progression recommandée de la complexité~:
-
-\begin{enumerate}[leftmargin=1.5cm, itemsep=3pt]
-  \item \textbf{Régression Linéaire} (\textit{baseline})~: modèle de référence simple, interprétable.
-  \item \textbf{Ridge Régression}~: variante régularisée, réduisant l'impact des outliers.
-  \item \textbf{Random Forest}~: modèle d'ensemble, robuste aux non-linéarités.
-  \item \textbf{XGBoost}~: gradient boosting, état de l'art sur les données tabulaires.
-  \item \textbf{MLP (Réseau de Neurones)}~: 3 couches cachées (128, 64, 32 neurones), activation ReLU.
-\end{enumerate}
-
-\textbf{Justification du choix de XGBoost comme modèle principal}~: les données sont tabulaires (structure CSV), de taille modérée (\textasciitilde{}28\,000 lignes), avec des relations non-linéaires présumées entre pluviométrie/température et rendement. XGBoost excelle dans ce contexte tout en offrant une bonne interprétabilité via les importances de variables.
-
-%--------------------------------------------------
-\section{Résultats Expérimentaux}
-
-\subsection{Comparaison des modèles}
-
-La figure~\ref{fig:model-results} présente les résultats comparatifs des cinq modèles selon les métriques $R^2$ et RMSE.
+\subsection{Accueil + gouvernance latérale}
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=0.95\textwidth]{chap4_model_results.png}
-  \caption{Résultats expérimentaux~: comparaison R² et RMSE des modèles sur le jeu de test}
-  \label{fig:model-results}
+  \includegraphics[width=0.95\textwidth]{accueil.png}
+  \caption{Page d'accueil, modèle actif et panneau de confiance}
+  \label{fig:agriyield-vue-accueil}
 \end{figure}
+
+\textbf{Rôle de cette page~:}
+\begin{itemize}[leftmargin=1.5cm]
+  \item charger un dataset CSV,
+  \item afficher le modèle actif (algorithme, version, précision),
+  \item exposer les éléments de traçabilité (source dataset, hash, horizon temporel),
+  \item fournir des actions de gouvernance modèle (activation, rollback baseline).
+\end{itemize}
+
+\subsection{Page ``Simulateur''}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\textwidth]{page_simulation.png}
+  \caption{Simulation de scénarios climatiques et analyse de sensibilité}
+  \label{fig:agriyield-vue-simulation}
+\end{figure}
+
+\textbf{Entrées~:} pays, culture, année cible, variations pluie/température/pesticides.\\
+\textbf{Sorties~:} comparaison historique vs base vs scénario, différentiel net, courbes de sensibilité, scénarios de stress.
+
+\subsection{Page ``Alertes \& Décisions''}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\textwidth]{page_decision_alerte.png}
+  \caption{Alertes métier et recommandations d'action}
+  \label{fig:agriyield-vue-alertes}
+\end{figure}
+
+\textbf{Fonction~:} traduire la variation de rendement en alertes opérationnelles (danger/vigilance/opportunité) et recommandations priorisées.
+
+\subsection{Page ``Performances Modèles''}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\textwidth]{page_analyse_perfomance.png}
+  \caption{Importance des variables pour le modèle actif}
+  \label{fig:agriyield-vue-performance}
+\end{figure}
+
+\textbf{Fonction~:} rendre le modèle interprétable via la contribution relative des variables.
+
+\subsection{Page ``Gestion Modèles''}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\textwidth]{page_gestion_modele.png}
+  \caption{Catalogue des versions de modèles et gouvernance}
+  \label{fig:agriyield-vue-gouvernance}
+\end{figure}
+
+\textbf{Fonction~:} renommer, activer, supprimer une version (hors baseline protégée), et revenir au modèle de base.
+
+%--------------------------------------------------
+\section{Pourquoi Random Forest apparaît meilleur que XGBoost selon la baseline}
+
+\subsection{État réel du registre de modèles}
+
+La confusion observée est normale et vient de la coexistence de plusieurs versions \textit{baseline}. Le registre distingue~:
+\begin{itemize}[leftmargin=1.5cm]
+  \item le \textbf{modèle actif} (utilisé en production UI),
+  \item le \textbf{baseline canonique} (pointeur de référence),
+  \item d'autres baselines historiques conservées pour audit/rollback.
+\end{itemize}
 
 \begin{table}[H]
 \centering
-\caption{Tableau récapitulatif des performances sur le jeu de test}
-\label{tab:performances-modeles}
-\renewcommand{\arraystretch}{1.4}
-\begin{tabular}{|l|r|r|r|}
-\hline
-\rowcolor{TableHeader}\textbf{Modèle} & \textbf{MAE (hg/ha)} & \textbf{RMSE (hg/ha)} & \textbf{$R^2$} \\
-\hline
-Régression Linéaire & 4\,210 & 3\,420 & 0.71 \\
-\hline
-Ridge Régression & 4\,050 & 3\,310 & 0.73 \\
-\hline
-Random Forest & 2\,720 & 2\,150 & 0.88 \\
-\hline
-\textbf{XGBoost} & \textbf{2\,490} & \textbf{1\,980} & \textbf{0.91} \\
-\hline
-MLP (Réseau de Neurones) & 2\,810 & 2\,240 & 0.87 \\
-\hline
-\end{tabular}
+\caption{Comparaison des versions baseline présentes dans le registre}
+\label{tab:baseline-versions}
+\pgfplotstabletypeset[
+  col sep=comma,
+  columns={VersionShort,BestModel,R2,EvalStrategy,Status},
+  columns/VersionShort/.style={string type,column name=Version,column type=l},
+  columns/BestModel/.style={string type,column name=Meilleur algorithme,column type=l},
+  columns/R2/.style={column name=$R^2$,column type=r,fixed,precision=4},
+  columns/EvalStrategy/.style={string type,column name=Stratégie évaluation,column type=l},
+  columns/Status/.style={string type,column name=Statut,column type=l},
+  every head row/.style={before row={\begin{tabular}{|l|l|r|l|l|}\hline\rowcolor{TableHeader}},after row={\\\hline}},
+  every last row/.style={after row={\\\hline\end{tabular}}},
+]{data_report/baseline_versions.csv}
 \end{table}
 
-\subsection{Rendement prédit vs. rendement réel}
-
-La figure~\ref{fig:pred-vs-real} montre le nuage de points entre les prédictions XGBoost et les valeurs réelles du jeu de test~: la proximité avec la diagonale confirme la bonne qualité du modèle ($R^2 = 0.91$).
+\textbf{Interprétation~:}
+\begin{itemize}[leftmargin=1.5cm]
+  \item la version baseline active dans ton interface est \textbf{Random Forest} avec $R^2\approx0.9577$,
+  \item une autre baseline plus récente est \textbf{XGBoost} avec $R^2\approx0.8926$, évaluée en \texttt{temporal\_holdout}.
+\end{itemize}
 
 \begin{figure}[H]
-  \centering
-  \includegraphics[width=0.62\textwidth]{chap4_pred_vs_real.png}
-  \caption{Rendement prédit vs. rendement réel --- modèle XGBoost ($R^2 = 0.91$)}
-  \label{fig:pred-vs-real}
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=0.85\textwidth,
+  height=6.6cm,
+  ybar,
+  bar width=18pt,
+  ymin=0.80,
+  ymax=1.00,
+  ylabel={$R^2$},
+  xlabel={Versions baseline},
+  symbolic x coords={model-202604...7ab3f2,model-202604...f31275},
+  xtick=data,
+  x tick label style={rotate=12,anchor=east},
+  nodes near coords,
+  nodes near coords align={vertical},
+  grid=major,
+]
+\addplot+[fill=UDSBlue!70] table[col sep=comma, x=VersionShort, y=R2] {data_report/baseline_versions.csv};
+\end{axis}
+\end{tikzpicture}
+\caption{Niveaux de performance ($R^2$) des versions baseline}
+\label{fig:baseline-versions-r2}
 \end{figure}
 
 %--------------------------------------------------
-\section{Analyse et Discussion des Résultats}
+\section{Intérêt de comparer plusieurs algorithmes}
 
-\subsection{Importance des variables}
+\subsection{Comparaison intra-baseline (algorithmes candidats)}
 
-La figure~\ref{fig:feature-importance} révèle que les variables climatiques (\texttt{average\_rain\_fall} et \texttt{avg\_temp}) sont de loin les facteurs les plus déterminants du rendement, suivies par les pesticides et la superficie cultivée.
+\begin{table}[H]
+\centering
+\caption{Performance des algorithmes sur la baseline active/référence du rapport}
+\label{tab:baseline-model-metrics}
+\pgfplotstabletypeset[
+  col sep=comma,
+  columns={Model,MAE,RMSE,R2},
+  columns/Model/.style={string type,column name=Modèle,column type=l},
+  columns/MAE/.style={column name=MAE (hg/ha),column type=r,fixed,precision=0},
+  columns/RMSE/.style={column name=RMSE (hg/ha),column type=r,fixed,precision=0},
+  columns/R2/.style={column name=$R^2$,column type=r,fixed,precision=4},
+  every head row/.style={before row={\begin{tabular}{|l|r|r|r|}\hline\rowcolor{TableHeader}},after row={\\\hline}},
+  every last row/.style={after row={\\\hline\end{tabular}}},
+]{data_report/baseline_model_metrics.csv}
+\end{table}
 
 \begin{figure}[H]
-  \centering
-  \includegraphics[width=0.82\textwidth]{chap4_feature_importance.png}
-  \caption{Importance des variables dans le modèle XGBoost --- Prédiction du rendement agricole}
-  \label{fig:feature-importance}
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=0.90\textwidth,
+  height=6.8cm,
+  ybar,
+  bar width=14pt,
+  ymin=0.80,
+  ymax=1.00,
+  ylabel={$R^2$},
+  xlabel={Algorithmes candidats},
+  symbolic x coords={Random Forest,XGBoost,Gradient Boosting},
+  xtick=data,
+  x tick label style={rotate=8,anchor=east},
+  nodes near coords,
+  nodes near coords align={vertical},
+  grid=major,
+]
+\addplot+[fill=UDSGold!85] table[col sep=comma, x=Model, y=R2] {data_report/baseline_model_metrics.csv};
+\end{axis}
+\end{tikzpicture}
+\caption{Comparaison des algorithmes sur la même baseline}
+\label{fig:baseline-models-r2}
 \end{figure}
 
-\subsection{Analyse des erreurs}
-
-Les plus grands résidus concernent les cultures à très hauts rendements (pommes de terre en Europe du Nord) et les pays avec des conditions climatiques extrêmes. Ces cas constituent des opportunités d'amélioration par l'ajout de données de contexte (type de sol, niveau d'irrigation, variétés cultivées).
-
-\subsection{Interprétation agronomique}
-
-\begin{itemize}[leftmargin=1.5cm, itemsep=3pt]
-  \item Une augmentation de 100\,mm de pluviométrie annuelle est associée à une hausse de rendement d'environ 800--1\,200\,hg/ha pour le maïs.
-  \item La température optimale pour le maïs se situe entre 18°C et 24°C~; au-delà, le rendement décline.
-  \item L'usage de pesticides améliore le rendement mais avec un effet de saturation au-delà d'un seuil selon la culture.
+\textbf{Pourquoi garder plusieurs modèles est utile~:}
+\begin{itemize}[leftmargin=1.5cm]
+  \item \textbf{robustesse}~: un algorithme peut dominer sur un contexte et perdre sur un autre,
+  \item \textbf{contrôle de dérive}~: comparer les écarts au fil des versions détecte plus vite les régressions,
+  \item \textbf{compromis métier}~: certains modèles sont plus précis, d'autres plus stables/interprétables,
+  \item \textbf{gouvernance}~: la présence de plusieurs candidats permet des décisions d'activation argumentées.
 \end{itemize}
 
 %--------------------------------------------------
-\section{Aide à la Décision et Recommandations}
+\section{Prétraitement et analyses de données (modèle de base)}
 
-Les prédictions du modèle alimentent directement les quatre modules de la plateforme AgriYield~:
+\subsection{Couverture du dataset}
 
-\begin{description}[leftmargin=1.5cm, itemsep=4pt]
-  \item[Analyse Historique] Visualisation des tendances de rendement par pays, culture et période. Identification des meilleures et pires années.
-  \item[Modélisation \& Simulation] Simulation de scénarios~: \textit{``Quel serait le rendement de maïs au Cameroun si la pluviométrie baisse de 15\,\%~?''}
-  \item[Système d'Alerte] Déclenchement d'alertes précoces quand les prévisions climatiques signalent un risque de rendement inférieur à 80\,\% du seuil national.
-  \item[Aide à la Décision] Recommandations sur~: allocation des intrants (engrais, pesticides), planification des récoltes, arbitrages d'import/export, ciblage de l'aide alimentaire.
-\end{description}
+Le dataset de base utilisé pour l'entraînement couvre~:
+\begin{itemize}[leftmargin=1.5cm]
+  \item \textbf{45\,729 observations},
+  \item \textbf{226 pays},
+  \item \textbf{10 cultures},
+  \item période \textbf{1990--2024}.
+\end{itemize}
 
-\textbf{Recommandation opérationnelle principale}~: pour les pays d'Afrique subsaharienne, l'investissement prioritaire dans l'irrigation (réduction de la dépendance à la pluviométrie) génèrerait les gains de rendement les plus significatifs selon le modèle.
+\subsection{Courbe de volume annuel et fenêtre de test temporelle}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=0.95\textwidth,
+  height=7cm,
+  xlabel={Année},
+  ylabel={Nombre d'observations},
+  ymin=0,
+  ymax=1400,
+  grid=major,
+  legend style={at={(0.02,0.98)},anchor=north west},
+]
+\addplot[draw=none, fill=UDSGold!18] coordinates {(2018,0) (2024,0) (2024,1400) (2018,1400)} \closedcycle;
+\addplot[color=UDSBlue, mark=*, mark size=1.2pt, line width=0.9pt]
+  table[col sep=comma, x=Year, y=Observations] {data_report/baseline_yearly_analysis.csv};
+\legend{Fenêtre test temporelle,Observations/an}
+\end{axis}
+\end{tikzpicture}
+\caption{Distribution annuelle des observations et zone test 2018--2024}
+\label{fig:baseline-observations-year}
+\end{figure}
+
+\textbf{Lecture~:} les volumes par année restent relativement stables, ce qui rend la comparaison temporelle plus fiable.
+
+\subsection{Évolution du rendement moyen global}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=0.95\textwidth,
+  height=7cm,
+  xlabel={Année},
+  ylabel={Rendement moyen (hg/ha)},
+  ymin=55000,
+  ymax=90000,
+  grid=major,
+]
+\addplot[color=UDSDark, mark=none, line width=1.1pt]
+  table[col sep=comma, x=Year, y=MeanYield] {data_report/baseline_yearly_analysis.csv};
+\end{axis}
+\end{tikzpicture}
+\caption{Tendance annuelle du rendement moyen global}
+\label{fig:baseline-yield-year}
+\end{figure}
+
+\textbf{Lecture~:} la tendance de fond est croissante, avec des fluctuations annuelles qui justifient l'usage de modèles non linéaires.
+
+\subsection{Courbe de prétraitement~: effet de la standardisation}
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.49\textwidth}
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=\textwidth,
+  height=6.4cm,
+  ybar,
+  bar width=10pt,
+  ymode=log,
+  ymin=1,
+  ymax=1000000,
+  grid=major,
+  xlabel={Variable},
+  ylabel={Avant standardisation (log)},
+  symbolic x coords={Year,Rain,Pesticides,Temp},
+  xtick=data,
+  nodes near coords,
+  nodes near coords align={vertical},
+]
+\addplot+[fill=UDSBlue!70] table[col sep=comma, x=Feature, y=RawStd] {data_report/baseline_scaling_plot.csv};
+\end{axis}
+\end{tikzpicture}
+\end{minipage}
+\hfill
+\begin{minipage}{0.49\textwidth}
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=\textwidth,
+  height=6.4cm,
+  ybar,
+  bar width=10pt,
+  ymin=0.95,
+  ymax=1.05,
+  grid=major,
+  xlabel={Variable},
+  ylabel={Après standardisation (zoom)},
+  symbolic x coords={Year,Rain,Pesticides,Temp},
+  xtick=data,
+  nodes near coords,
+  every node near coord/.append style={
+    font=\scriptsize,
+    /pgf/number format/fixed,
+    /pgf/number format/precision=2
+  },
+]
+\addplot+[fill=UDSGold!80] table[col sep=comma, x=Feature, y=ZStd] {data_report/baseline_scaling_plot.csv};
+\end{axis}
+\end{tikzpicture}
+\end{minipage}
+\caption{Impact de la standardisation Z-score~: distribution brute (gauche) et valeurs standardisées (droite)}
+\label{fig:baseline-zscore-impact}
+\end{figure}
+
+\textbf{Lecture~:} à gauche, les écarts-types bruts sont très hétérogènes. À droite, après Z-score, ils convergent autour de 1, ce qui confirme l'effet attendu de la standardisation et améliore la stabilité de l'entraînement.
+
+%--------------------------------------------------
+\section{Fine-tuning~: clarification opérationnelle}
+
+\subsection{Mécanisme implémenté}
+
+Le fine-tuning est déclenché via l'upload CSV (endpoint \texttt{/api/ml/train/upload}). Deux modes sont possibles~:
+\begin{itemize}[leftmargin=1.5cm]
+  \item \texttt{replace\_dataset=true}~: entraînement uniquement sur le dataset chargé.
+  \item \texttt{replace\_dataset=false}~: fusion dataset actif + dataset chargé, puis déduplication.
+\end{itemize}
+
+\subsection{Règle de couverture temporelle (point important)}
+
+\begin{itemize}[leftmargin=1.5cm]
+  \item Si le modèle actif couvre jusqu'à 2024, son horizon est 2024.
+  \item Si un fine-tuning est fait avec un dataset allant jusqu'à 2020 et \texttt{replace\_dataset=true}, le nouveau modèle actif est borné à 2020.
+  \item Si \texttt{replace\_dataset=false}, la borne temporelle dépend de l'union des deux datasets.
+\end{itemize}
+
+C'est cette logique qui explique les écarts de couverture et parfois les écarts d'algorithme gagnant entre versions.
 
 %--------------------------------------------------
 \section{Conclusion}
 
-Ce chapitre a démontré qu'un modèle XGBoost entraîné sur le jeu de données FAO/Kaggle permet de prédire le rendement agricole avec un coefficient de détermination $R^2 = 0.91$, validant la démarche méthodologique décrite au chapitre précédent. La plateforme AgriYield intègre ces résultats dans un système d'aide à la décision concret, à fort impact sociétal pour la sécurité alimentaire. Le chapitre suivant propose une prise de recul sur les apports, les limites et les perspectives de cette approche.
+Le chapitre montre une ligne complète et cohérente~: architecture, écrans, gouvernance des versions et preuves quantitatives. La confusion ``Random Forest vs XGBoost'' est levée en distinguant clairement \textbf{version active}, \textbf{baseline canonique} et \textbf{baseline de meilleure performance}. La comparaison multi-modèles devient ainsi un atout méthodologique, et non une ambiguïté.
 
 \newpage

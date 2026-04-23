@@ -124,6 +124,10 @@ pyvenv.cfg
 *.csv
 *.xlsx
 *.json
+# Keep report extraction assets tracked
+!projet_latex_data_science/data_report/
+!projet_latex_data_science/data_report/*.csv
+!projet_latex_data_science/data_report/*.json
 # Keep React manifests tracked for CI
 !frontend/react/package.json
 !frontend/react/package-lock.json

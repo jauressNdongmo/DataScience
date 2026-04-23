@@ -1,0 +1,63 @@
+{
+  "dataset": {
+    "rows": 45729,
+    "countries": 226,
+    "crops": 10,
+    "year_min": 1990,
+    "year_max": 2024
+  },
+  "report_baseline": {
+    "model_version": "model-20260423T064012Z-207ab3f2",
+    "display_name": "model-20260423T064012Z-207ab3f2",
+    "mode": "baseline",
+    "best_model": "Random Forest",
+    "r2": 0.9577214327885359,
+    "samples": 45729,
+    "dataset_source": "refresh-baseline-2024",
+    "dataset_hash": "",
+    "evaluation_strategy": "unknown",
+    "test_year_min": 0,
+    "test_year_max": 0,
+    "year_min": 1990,
+    "year_max": 2024,
+    "created_at": "2026-04-23T06:40:12.560984+00:00"
+  },
+  "active_model": {
+    "model_version": "model-20260423T064012Z-207ab3f2",
+    "display_name": "model-20260423T064012Z-207ab3f2",
+    "mode": "baseline",
+    "best_model": "Random Forest",
+    "r2": 0.9577214327885359,
+    "samples": 45729,
+    "dataset_source": "refresh-baseline-2024",
+    "dataset_hash": "",
+    "evaluation_strategy": "unknown",
+    "test_year_min": 0,
+    "test_year_max": 0,
+    "year_min": 1990,
+    "year_max": 2024,
+    "created_at": "2026-04-23T06:40:12.560984+00:00"
+  },
+  "canonical_baseline": {
+    "model_version": "model-20260423T210209Z-38f31275",
+    "display_name": "model-20260423T210209Z-38f31275",
+    "mode": "baseline",
+    "best_model": "XGBoost",
+    "r2": 0.8926020327685408,
+    "samples": 45729,
+    "dataset_source": "report-baseline-refresh-2026-04-23",
+    "dataset_hash": "60311e03a6688a0bbefccf630ccd6cffefe286bef0e6f02325ca58a75d02e8a4",
+    "evaluation_strategy": "temporal_holdout",
+    "test_year_min": 2018,
+    "test_year_max": 2024,
+    "year_min": 1990,
+    "year_max": 2024,
+    "created_at": "2026-04-23T21:02:09.635480+00:00"
+  },
+  "registry_pointers": {
+    "active_model_version": "model-20260423T064012Z-207ab3f2",
+    "baseline_model_version": "model-20260423T210209Z-38f31275",
+    "recommended_model_version": "model-20260423T094530Z-c628c6d7"
+  },
+  "selection_rule": "report_baseline = meilleure version baseline selon R2 (puis date)"
+}

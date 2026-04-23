@@ -1,0 +1,5 @@
+Version,VersionShort,Mode,BestModel,R2,Status
+model-20260423T094530Z-c628c6d7,model-202604...28c6d7,finetune,Random Forest,0.9849798134229686,
+model-20260423T064341Z-8e8fefd3,model-202604...8fefd3,finetune,Random Forest,0.9849798134229686,
+model-20260423T064012Z-207ab3f2,model-202604...7ab3f2,baseline,Random Forest,0.9577214327885359,Actif
+model-20260423T210209Z-38f31275,model-202604...f31275,baseline,XGBoost,0.8926020327685408,Baseline

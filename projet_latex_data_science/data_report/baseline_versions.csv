@@ -1,0 +1,3 @@
+Version,VersionShort,BestModel,R2,DatasetSource,EvalStrategy,YearMin,YearMax,Status
+model-20260423T064012Z-207ab3f2,model-202604...7ab3f2,Random Forest,0.9577214327885359,refresh-baseline-2024,unknown,1990,2024,Actif
+model-20260423T210209Z-38f31275,model-202604...f31275,XGBoost,0.8926020327685408,report-baseline-refresh-2026-04-23,temporal-holdout,1990,2024,Baseline
