@@ -1,0 +1,203 @@
+\chapter{Méthodologie d'Exploitation des Données avec les Modèles d'IA}
+
+\encadreobjectif{Décrire une démarche opérationnelle complète allant de la formulation du problème à l'interprétation des résultats, en détaillant chaque étape avec suffisamment de précision pour qu'elle puisse être reproduite dans un projet concret.}
+
+%--------------------------------------------------
+\section{Vue d'Ensemble~: Le Pipeline MLOps}
+
+Avant de détailler chaque étape, la figure~\ref{fig:pipeline} présente le pipeline complet qui structure la démarche, de la collecte des données jusqu'au déploiement et monitoring en production.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.98\textwidth]{chap3_pipeline.png}
+  \caption{Pipeline complet MLOps~: de la donnée brute au modèle en production}
+  \label{fig:pipeline}
+\end{figure}
+
+La méthodologie \textbf{CRISP-DM} (\textit{Cross-Industry Standard Process for Data Mining}) formalise ce processus itératif, comme illustré à la figure~\ref{fig:crisp-dm}. Ce n'est pas un pipeline linéaire mais un cycle~: l'évaluation des résultats peut conduire à reformuler le problème ou à recollecte de nouvelles données.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.52\textwidth]{chap3_crisp_dm.png}
+  \caption{Méthodologie CRISP-DM~: processus itératif de science des données}
+  \label{fig:crisp-dm}
+\end{figure}
+
+%--------------------------------------------------
+\section{Définition du Problème à Résoudre}
+
+Toute démarche de science des données commence par une formulation claire du problème. Cette étape, souvent sous-estimée, conditionne l'ensemble des choix méthodologiques ultérieurs. Elle consiste à répondre à plusieurs questions fondamentales~:
+
+\begin{itemize}[leftmargin=1.5cm, itemsep=4pt]
+  \item \textbf{Quel est l'objectif métier~?} Traduire un besoin concret en une question à laquelle les données peuvent apporter une réponse. \textit{Exemple~: Peut-on anticiper le rendement agricole à partir de données climatiques et agronomiques~?}
+  \item \textbf{Quelle est la variable cible~?} Dans notre cas d'étude~: le rendement agricole exprimé en \texttt{hg/ha}.
+  \item \textbf{Quel type de tâche~?} La nature continue de la variable cible détermine qu'il s'agit d'un problème de \textbf{régression}.
+  \item \textbf{Quelles sont les contraintes~?} Volume de données disponibles, délais, ressources de calcul, exigences d'interprétabilité.
+\end{itemize}
+
+%--------------------------------------------------
+\section{Collecte et Compréhension des Données}
+
+Une fois le problème formulé, on identifie et collecte les données nécessaires. Les sources peuvent être~:
+
+\begin{itemize}[leftmargin=1.5cm, itemsep=3pt]
+  \item Les \textbf{bases institutionnelles}~: FAO, Banque mondiale, ministères de l'agriculture.
+  \item Les \textbf{plateformes de données ouvertes}~: Kaggle, UCI Repository, data.gouv.fr.
+  \item Les \textbf{capteurs et objets connectés}~: stations météorologiques, drones agricoles.
+  \item Les \textbf{enquêtes terrain}~: données collectées directement auprès des agriculteurs.
+\end{itemize}
+
+La compréhension des données produit un \textbf{dictionnaire des données}~:
+
+\begin{table}[H]
+\centering
+\caption{Dictionnaire de données pour la prédiction du rendement agricole}
+\label{tab:dictionnaire-donnees}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabularx}{\textwidth}{|>{\ttfamily}p{3.5cm}|p{2.2cm}|p{2cm}|X|}
+\hline
+\rowcolor{TableHeader}\textbf{Variable} & \textbf{Type} & \textbf{Unité} & \textbf{Description} \\
+\hline
+Area & Catégoriel & -- & Pays ou zone géographique \\
+\hline
+Item & Catégoriel & -- & Type de culture (maïs, riz, blé\ldots) \\
+\hline
+Year & Numérique & Année & Année de la mesure \\
+\hline
+hg/ha\_yield & Numérique & hg/ha & \textbf{Variable cible~: rendement agricole} \\
+\hline
+average\_rain\_fall\_mm & Numérique & mm/an & Pluviométrie annuelle moyenne \\
+\hline
+pesticides\_tonnes & Numérique & tonnes & Quantité de pesticides utilisés \\
+\hline
+avg\_temp & Numérique & $^\circ$C & Température moyenne annuelle \\
+\hline
+\end{tabularx}
+\end{table}
+
+%--------------------------------------------------
+\section{Prétraitement des Données}
+
+\subsection{Nettoyage des données}
+\begin{itemize}[leftmargin=1.5cm, itemsep=3pt]
+  \item \textbf{Valeurs manquantes}~: suppression ou imputation par moyenne/médiane/KNN selon le mécanisme de manquement.
+  \item \textbf{Doublons}~: identification et élimination des observations redondantes.
+  \item \textbf{Incohérences}~: vérification des plages de valeurs (rendement négatif, température aberrante).
+\end{itemize}
+
+\subsection{Encodage des variables catégorielles}
+Les variables \texttt{Area} et \texttt{Item} sont nominales~; on applique un \textbf{encodage ordinal} (entier par catégorie) ou un \textbf{target encoding} (remplacement par la moyenne de la cible) pour préserver l'espace mémoire face aux nombreux pays/cultures.
+
+\subsection{Normalisation et standardisation}
+\begin{itemize}[leftmargin=1.5cm, itemsep=4pt]
+  \item \textbf{Normalisation Min-Max}~:
+  \[ x' = \frac{x - x_{\min}}{x_{\max} - x_{\min}} \]
+  \item \textbf{Standardisation Z-score}~:
+  \[ x' = \frac{x - \mu}{\sigma} \]
+\end{itemize}
+Ces transformations sont indispensables pour les SVM, la régression logistique et les réseaux de neurones.
+
+\subsection{Séparation entraînement / validation / test}
+
+Pour évaluer la capacité de généralisation du modèle, le jeu de données est divisé~:
+\begin{itemize}[leftmargin=1.5cm]
+  \item \textbf{Entraînement}~: 70 à 80\,\% des données pour ajuster les paramètres.
+  \item \textbf{Validation}~: pour le réglage des hyperparamètres.
+  \item \textbf{Test}~: 20 à 30\,\% pour l'évaluation finale sur données jamais vues.
+\end{itemize}
+
+%--------------------------------------------------
+\section{Analyse Exploratoire des Données (EDA)}
+
+L'EDA combine statistiques descriptives et visualisations graphiques pour développer une compréhension approfondie du jeu de données avant toute modélisation.
+
+\subsection{Statistiques descriptives}
+Tendance centrale (moyenne, médiane), dispersion (écart-type, IQR), distribution (asymétrie, aplatissement) et taux de valeurs manquantes par variable.
+
+\subsection{Visualisations clés}
+\begin{itemize}[leftmargin=1.5cm, itemsep=3pt]
+  \item \textbf{Histogrammes et boxplots}~: distribution de chaque variable et détection des outliers.
+  \item \textbf{Nuages de points}~: relations bivariées entre variables.
+  \item \textbf{Matrices de corrélation} (heatmaps)~: dépendances linéaires entre variables numériques.
+  \item \textbf{Diagrammes en barres}~: répartition des modalités catégorielles.
+\end{itemize}
+
+%--------------------------------------------------
+\section{Entraînement des Modèles}
+
+\subsection{Stratégie d'apprentissage}
+
+On sélectionne plusieurs modèles candidats à comparer~: régression linéaire (\textit{baseline}), Ridge, Random Forest, XGBoost, réseau de neurones (MLP). La \textbf{validation croisée à K plis} (figure~\ref{fig:kfold}) permet d'évaluer les performances de manière robuste.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.85\textwidth]{chap3_kfold.png}
+  \caption{Validation croisée à K=5 plis (K-Fold Cross Validation)}
+  \label{fig:kfold}
+\end{figure}
+
+\subsection{Réglage des hyperparamètres}
+
+\begin{itemize}[leftmargin=1.5cm, itemsep=3pt]
+  \item \textbf{Grid Search}~: exploration systématique de toutes les combinaisons dans un espace prédéfini.
+  \item \textbf{Random Search}~: échantillonnage aléatoire, souvent plus efficace quand l'espace est vaste.
+  \item \textbf{Optimisation bayésienne}~: utilisation d'un modèle probabiliste pour guider la recherche vers les zones prometteuses.
+\end{itemize}
+
+%--------------------------------------------------
+\section{Évaluation des Performances}
+
+\subsection{Métriques pour la régression}
+
+\begin{table}[H]
+\centering
+\caption{Métriques d'évaluation pour les problèmes de régression}
+\label{tab:metriques-regression}
+\renewcommand{\arraystretch}{1.6}
+\begin{tabularx}{\textwidth}{|>{\bfseries}p{2cm}|p{5cm}|X|}
+\hline
+\rowcolor{TableHeader}\textbf{Métrique} & \textbf{Formule} & \textbf{Interprétation} \\
+\hline
+MAE & $\displaystyle\frac{1}{n}\sum_{i=1}^n |y_i - \hat{y}_i|$ & Erreur moyenne absolue~; interprétable, robuste aux valeurs extrêmes. \\
+\hline
+RMSE & $\displaystyle\sqrt{\frac{1}{n}\sum_{i=1}^n (y_i - \hat{y}_i)^2}$ & Pénalise davantage les grandes erreurs. \\
+\hline
+$R^2$ & $\displaystyle 1 - \frac{\sum(y_i - \hat{y}_i)^2}{\sum(y_i - \bar{y})^2}$ & Proportion de variance expliquée~; vaut 1 pour un modèle parfait. \\
+\hline
+\end{tabularx}
+\end{table}
+
+\subsection{Détection du surapprentissage et sous-apprentissage}
+
+La figure~\ref{fig:overfitting} illustre les trois configurations possibles~: sous-apprentissage (modèle trop simple), apprentissage optimal, surapprentissage (modèle mémorisant les données d'entraînement).
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\textwidth]{chap3_overfitting.png}
+  \caption{Sous-apprentissage, apprentissage optimal et sur-apprentissage (overfitting)}
+  \label{fig:overfitting}
+\end{figure}
+
+La comparaison systématique des performances sur les jeux d'entraînement et de test, ainsi que l'analyse des courbes d'apprentissage, permet de diagnostiquer ces phénomènes et d'ajuster la complexité du modèle.
+
+%--------------------------------------------------
+\section{Interprétation et Exploitation des Résultats}
+
+\subsection{Interprétabilité des modèles}
+
+\begin{itemize}[leftmargin=1.5cm, itemsep=4pt]
+  \item \textbf{Importance des variables (feature importance)}~: classement des variables selon leur contribution prédictive. Fourni nativement par Random Forest et XGBoost.
+  \item \textbf{Valeurs SHAP}~: méthode fondée sur la théorie des jeux qui attribue à chaque variable une contribution marginale à chaque prédiction individuelle.
+  \item \textbf{Partial Dependence Plots}~: visualisations montrant l'effet marginal d'une variable sur la prédiction.
+\end{itemize}
+
+\subsection{Du modèle à la décision}
+
+L'objectif final de l'exploitation des données n'est pas la construction d'un modèle, mais l'\textbf{amélioration de la prise de décision}. Les prédictions du modèle doivent être intégrées dans un processus décisionnel qui prend en compte les incertitudes, les contraintes opérationnelles et le jugement humain.
+
+%--------------------------------------------------
+\section{Conclusion}
+
+Ce chapitre a décrit une méthodologie rigoureuse et reproductible, couvrant la formulation du problème, la collecte des données, le prétraitement, l'EDA, l'entraînement, l'évaluation et l'interprétation. Cette méthodologie constitue le cadre opérationnel directement appliqué dans le chapitre suivant consacré à la prédiction du rendement agricole.
+
+\newpage

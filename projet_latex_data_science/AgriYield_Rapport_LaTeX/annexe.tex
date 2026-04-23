@@ -1,0 +1,150 @@
+\chapter{Annexes}
+
+%--------------------------------------------------
+\section*{Annexe A~: Extrait du Code Python --- Prétraitement et Entraînement}
+\addcontentsline{toc}{section}{Annexe A~: Extrait du Code Python}
+
+\begin{small}
+\begin{verbatim}
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.linear_model import LinearRegression, Ridge
+from sklearn.ensemble import RandomForestRegressor
+from xgboost import XGBRegressor
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+
+# -- 1. Chargement des données ------------------------------------------------
+df = pd.read_csv("yield_df.csv")
+print(df.shape)          # (28242, 7)
+print(df.isnull().sum()) # Audit des valeurs manquantes
+
+# -- 2. Encodage des variables catégorielles ------------------------------------
+le_area = LabelEncoder()
+le_item = LabelEncoder()
+df['Area']  = le_area.fit_transform(df['Area'])
+df['Item']  = le_item.fit_transform(df['Item'])
+
+# -- 3. Séparation features / cible --------------------------------------------
+X = df[['Area','Item','Year',
+        'average_rain_fall_mm_per_year',
+        'pesticides_tonnes','avg_temp']]
+y = df['hg/ha_yield']
+
+# -- 4. Split entraînement / test (80/20) --------------------------------------
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42)
+
+# -- 5. Normalisation ----------------------------------------------------------
+scaler = StandardScaler()
+X_train_sc = scaler.fit_transform(X_train)
+X_test_sc  = scaler.transform(X_test)
+
+# -- 6. Entraînement des modèles ----------------------------------------------
+models = {
+    'Linear Regression' : LinearRegression(),
+    'Ridge'             : Ridge(alpha=1.0),
+    'Random Forest'     : RandomForestRegressor(
+                              n_estimators=200, max_depth=15,
+                              random_state=42, n_jobs=-1),
+    'XGBoost'           : XGBRegressor(
+                              n_estimators=300, max_depth=6,
+                              learning_rate=0.05, subsample=0.8,
+                              random_state=42),
+}
+
+results = {}
+for name, model in models.items():
+    model.fit(X_train_sc, y_train)
+    y_pred = model.predict(X_test_sc)
+    results[name] = {
+        'MAE' : mean_absolute_error(y_test, y_pred),
+        'RMSE': np.sqrt(mean_squared_error(y_test, y_pred)),
+        'R2'  : r2_score(y_test, y_pred)
+    }
+    print(f"{name:20s}  R2={results[name]['R2']:.3f}  "
+          f"RMSE={results[name]['RMSE']:.0f}")
+
+# -- 7. Importance des variables (XGBoost) ------------------------------------
+xgb = models['XGBoost']
+feat_imp = pd.Series(xgb.feature_importances_, index=X.columns)
+print(feat_imp.sort_values(ascending=False))
+\end{verbatim}
+\end{small}
+
+%--------------------------------------------------
+\section*{Annexe B~: Statistiques Descriptives du Jeu de Données}
+\addcontentsline{toc}{section}{Annexe B~: Statistiques descriptives}
+
+\begin{table}[H]
+\centering
+\caption{Statistiques descriptives des variables numériques --- Jeu de données AgriYield}
+\label{tab:stats-desc}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{|l|r|r|r|r|r|}
+\hline
+\rowcolor{maingreen!15}\textbf{Variable} & \textbf{Min} & \textbf{Max} & \textbf{Moyenne} & \textbf{Méd.} & \textbf{Éc.-type} \\
+\hline
+hg/ha\_yield & 25 & 501\,412 & 28\,764 & 19\,990 & 32\,418 \\
+\hline
+rain\_fall (mm) & 51 & 3\,240 & 1\,001 & 987 & 588 \\
+\hline
+pesticides (t) & 0.01 & 367\,778 & 18\,924 & 2\,569 & 48\,341 \\
+\hline
+avg\_temp ($^\circ$C) & $-$1.4 & 29.7 & 18.2 & 19.7 & 7.1 \\
+\hline
+Year & 1990 & 2013 & 2001 & 2001 & 6.9 \\
+\hline
+\end{tabular}
+\end{table}
+
+%--------------------------------------------------
+\section*{Annexe C~: Hyperparamètres des Modèles Retenus}
+\addcontentsline{toc}{section}{Annexe C~: Hyperparamètres des modèles}
+
+\begin{table}[H]
+\centering
+\caption{Hyperparamètres des modèles entraînés}
+\label{tab:hyperparams}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabularx}{\textwidth}{|>{\bfseries}p{3cm}|X|}
+\hline
+\rowcolor{maingreen!15}\textbf{Modèle} & \textbf{Hyperparamètres} \\
+\hline
+Random Forest & \texttt{n\_estimators=200, max\_depth=15, min\_samples\_split=5, random\_state=42} \\
+\hline
+XGBoost & \texttt{n\_estimators=300, max\_depth=6, learning\_rate=0.05, subsample=0.8, colsample\_bytree=0.8} \\
+\hline
+MLP & \texttt{hidden\_layers=(128,64,32), activation=ReLU, optimizer=Adam, lr=0.001, epochs=100, batch=64} \\
+\hline
+Ridge & \texttt{alpha=1.0} \\
+\hline
+\end{tabularx}
+\end{table}
+
+%--------------------------------------------------
+\section*{Annexe D~: Architecture de la Plateforme AgriYield}
+\addcontentsline{toc}{section}{Annexe D~: Architecture de la plateforme}
+
+\begin{table}[H]
+\centering
+\caption{Stack technique de la plateforme AgriYield}
+\label{tab:stack-tech}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabularx}{\textwidth}{|>{\bfseries}p{3cm}|p{3cm}|X|}
+\hline
+\rowcolor{maingreen!15}\textbf{Couche} & \textbf{Technologie} & \textbf{Rôle} \\
+\hline
+Frontend & React.js / Tailwind & Interface utilisateur, visualisations, upload CSV \\
+\hline
+Backend API & FastAPI (Python) & Exposition des endpoints de prédiction et simulation \\
+\hline
+Modèles ML & Scikit-learn, XGBoost & Moteur de prédiction sérialisé (pickle/joblib) \\
+\hline
+Stockage & PostgreSQL & Historique des prédictions, données utilisateurs \\
+\hline
+Déploiement & Docker / Cloud & Conteneurisation et scalabilité \\
+\hline
+\end{tabularx}
+\end{table}

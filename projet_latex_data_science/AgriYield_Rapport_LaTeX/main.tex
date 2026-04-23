@@ -1,0 +1,145 @@
+
+\documentclass[12pt,a4paper]{report}
+
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{babel}
+
+
+\usepackage[top=2.5cm, bottom=2.5cm, left=2.8cm, right=2.5cm]{geometry}
+\setlength{\headheight}{15pt}
+\usepackage{setspace}
+\onehalfspacing
+
+
+% \usepackage{lmodern}
+% \usepackage{microtype}
+
+
+\usepackage{graphicx}
+\graphicspath{{images/}}
+
+
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{longtable}
+\usepackage{float}
+
+
+\usepackage{placeins}
+
+
+\usepackage[dvipsnames,table]{xcolor}
+\definecolor{maingreen}{RGB}{30,120,60}
+\definecolor{darkblue}{RGB}{26,42,78}
+\definecolor{lightgray}{RGB}{245,245,245}
+\definecolor{boxborder}{RGB}{30,120,60}
+
+
+\usepackage{enumitem}
+
+
+\usepackage{amsmath,amssymb}
+
+
+\usepackage{titlesec}
+
+\titleformat{\chapter}[display]
+  {\normalfont\Large\bfseries\color{maingreen}}
+  {\chaptername\ \thechapter}{12pt}{\huge}
+
+\titleformat{\section}[block]
+  {\normalfont\bfseries\large\color{darkblue}}{\thesection}{0.8em}{}
+
+\titleformat{\subsection}[block]
+  {\normalfont\bfseries\normalsize\color{darkblue}}{\thesubsection}{0.8em}{}
+
+\titleformat{\subsubsection}[block]
+  {\normalfont\bfseries\normalsize}{\thesubsubsection}{0.8em}{}
+
+
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{\small\textcolor{maingreen}{\leftmark}}
+\lhead{\small\textit{Université de Dschang --- Science des Données}}
+\cfoot{\thepage}
+\renewcommand{\headrulewidth}{0.5pt}
+\renewcommand{\headrule}{\hbox to\headwidth{\color{maingreen}\leaders\hrule height \headrulewidth\hfill}}
+
+
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{3}
+
+
+\usepackage{tcolorbox}
+\tcbuselibrary{skins,breakable}
+\newtcolorbox{objectifbox}[1][]{
+  enhanced, breakable,
+  colback=green!5!white, colframe=maingreen,
+  fonttitle=\bfseries, title=Objectif du chapitre,
+  #1
+}
+
+
+\usepackage{caption}
+\captionsetup{labelfont={bf,color=maingreen}, font=small}
+
+
+\usepackage[hidelinks,colorlinks=false]{hyperref}
+
+%──────────────────────────────────────────────────────────────────────────────
+\begin{document}
+
+%──────────────────────────────────────────────────────────────────────────────
+% PAGE DE GARDE
+%──────────────────────────────────────────────────────────────────────────────
+\input{garde}
+
+%──────────────────────────────────────────────────────────────────────────────
+% COMPOSITION DU GROUPE
+%──────────────────────────────────────────────────────────────────────────────
+\input{membres}
+
+%──────────────────────────────────────────────────────────────────────────────
+% TABLE DES MATIÈRES
+%──────────────────────────────────────────────────────────────────────────────
+\tableofcontents
+\listoffigures
+\listoftables
+\newpage
+
+%──────────────────────────────────────────────────────────────────────────────
+% INTRODUCTION GENERALE
+%──────────────────────────────────────────────────────────────────────────────
+\input{introduction}
+
+%──────────────────────────────────────────────────────────────────────────────
+% CHAPITRES
+%──────────────────────────────────────────────────────────────────────────────
+\input{chapitre1}
+\input{chapitre2}
+\input{chapitre3}
+\input{chapitre4}
+\input{chapitre5}
+
+%──────────────────────────────────────────────────────────────────────────────
+% CONCLUSION GENERALE
+%──────────────────────────────────────────────────────────────────────────────
+\input{conclusion}
+
+%──────────────────────────────────────────────────────────────────────────────
+% BIBLIOGRAPHIE
+%──────────────────────────────────────────────────────────────────────────────
+\input{bibliographie}
+
+%──────────────────────────────────────────────────────────────────────────────
+% ANNEXES
+%──────────────────────────────────────────────────────────────────────────────
+\appendix
+\input{annexe}
+
+\end{document}

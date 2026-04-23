@@ -1,0 +1,217 @@
+\chapter{Les Modèles d'IA au Service de l'Exploitation des Données}
+
+\begin{objectifbox}
+Présenter les grandes familles de modèles d'intelligence artificielle susceptibles d'être mobilisées dans un projet de science des données, en expliquant leurs principes de fonctionnement, leurs cas d'usage typiques et les critères permettant de choisir le modèle le plus adapté à un problème donné.
+\end{objectifbox}
+
+%--------------------------------------------------
+\section{Intelligence Artificielle, Machine Learning et Deep Learning}
+
+Avant de détailler les différents modèles, il est essentiel de clarifier les relations entre trois concepts souvent confondus~: l'intelligence artificielle, l'apprentissage automatique et l'apprentissage profond.
+
+\subsection{Définitions et relations hiérarchiques}
+
+\begin{description}[leftmargin=1.5cm, itemsep=4pt]
+  \item[Intelligence Artificielle (IA)] Désigne l'ensemble des théories, des techniques et des systèmes informatiques conçus pour simuler certaines capacités cognitives humaines~: le raisonnement, l'apprentissage, la perception, la compréhension du langage et la prise de décision.
+  \item[Machine Learning (ML)] Sous-domaine de l'IA dans lequel les modèles ne sont pas explicitement programmés, mais \textit{apprennent} à partir de données. L'algorithme ajuste ses paramètres internes de manière à minimiser une fonction d'erreur~:
+  \[
+    \hat{f} = \arg\min_{f \in \mathcal{F}} \frac{1}{n}\sum_{i=1}^{n} \mathcal{L}\!\left(y_i,\, f(x_i)\right)
+  \]
+  \item[Deep Learning (DL)] Sous-ensemble du ML reposant sur des réseaux de neurones artificiels comportant plusieurs couches de traitement. Particulièrement efficace pour les données complexes~: images, textes, séries temporelles.
+\end{description}
+
+Ces trois concepts s'emboîtent de manière hiérarchique, comme l'illustre la figure~\ref{fig:ia-ml-dl}.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.65\textwidth]{chap2_ia_ml_dl.png}
+  \caption{Relation hiérarchique entre IA, Machine Learning et Deep Learning}
+  \label{fig:ia-ml-dl}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Positionnement de l'IA, du ML et du DL}
+\label{tab:positionnement-ia-ml-dl}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabularx}{\textwidth}{|>{\bfseries}p{2.8cm}|p{3.8cm}|X|}
+\hline
+\rowcolor{maingreen!15}\textbf{Niveau} & \textbf{Principe} & \textbf{Exemples} \\
+\hline
+Intelligence Artificielle & Simuler des capacités cognitives humaines & Systèmes experts, planification, robotique \\
+\hline
+Machine Learning & Apprendre des patterns depuis des données & Régression, SVM, forêts aléatoires, k-means \\
+\hline
+Deep Learning & Apprendre des représentations profondes via des réseaux multicouches & CNN, RNN, Transformers, BERT \\
+\hline
+\end{tabularx}
+\end{table}
+
+%--------------------------------------------------
+\section{Modèles Supervisés}
+
+L'apprentissage supervisé consiste à entraîner un modèle à partir d'un jeu de données étiqueté, composé de couples $(x_i, y_i)$ où $x_i$ représente les variables d'entrée et $y_i$ la variable cible. L'objectif est d'apprendre une fonction de prédiction capable d'associer correctement une sortie $\hat{y}$ à toute nouvelle entrée $x$.
+
+\subsection{Régression}
+
+La régression s'applique lorsque la variable cible est \textbf{continue}~: rendement agricole (hg/ha), température, chiffre d'affaires.
+
+\subsubsection{Régression Linéaire}
+La régression linéaire modélise la relation entre les variables sous la forme~:
+\[
+  \hat{y} = \beta_0 + \beta_1 x_1 + \beta_2 x_2 + \cdots + \beta_p x_p
+\]
+où les coefficients $\beta_j$ sont estimés par la méthode des moindres carrés ordinaires. Ce modèle constitue souvent la \textit{baseline} dans les projets de science des données.
+
+\subsubsection{Forêt Aléatoire (Random Forest)}
+La forêt aléatoire est un modèle d'ensemble qui construit un grand nombre d'arbres de décision sur des sous-échantillons aléatoires des données, puis agrège leurs prédictions par moyennage. Cette approche réduit la variance et le risque de surapprentissage.
+
+\subsubsection{Gradient Boosting (XGBoost, LightGBM)}
+Les méthodes de gradient boosting construisent séquentiellement des arbres de décision, chaque nouvel arbre étant entraîné pour corriger les erreurs résiduelles du modèle précédent. Ces algorithmes figurent parmi les plus performants sur les données tabulaires.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.95\textwidth]{chap2_regression_models.png}
+  \caption{Comparaison des modèles de régression~: Linéaire, Random Forest et Gradient Boosting}
+  \label{fig:regression-models}
+\end{figure}
+
+\subsection{Classification}
+
+La classification s'applique lorsque la variable cible est \textbf{catégorielle}~: type de culture, présence ou absence d'une maladie, catégorie de risque.
+
+\subsubsection{Régression Logistique}
+Malgré son nom, la régression logistique est un modèle de classification. Elle modélise la probabilité d'appartenance à une classe via la fonction sigmoïde~:
+\[
+  P(y=1 \mid x) = \frac{1}{1+e^{-(\beta_0 + \boldsymbol{\beta}^T x)}}
+\]
+
+\subsubsection{Machines à Vecteurs de Support (SVM)}
+Les SVM cherchent l'hyperplan qui sépare les classes avec la plus grande marge possible. L'utilisation de fonctions noyau permet de traiter des problèmes non linéairement séparables.
+
+\subsubsection{Arbres de Décision et Méthodes d'Ensemble}
+Les arbres de décision partitionnent l'espace des variables d'entrée en régions homogènes. Combinés dans des méthodes d'ensemble (Random Forest, Gradient Boosting), ils constituent des classifieurs puissants.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.90\textwidth]{chap2_supervised_unsupervised.png}
+  \caption{Apprentissage supervisé (classification étiquetée) vs. non supervisé (clustering)}
+  \label{fig:supervised-unsupervised}
+\end{figure}
+
+%--------------------------------------------------
+\section{Modèles Non Supervisés}
+
+Contrairement à l'apprentissage supervisé, l'apprentissage non supervisé travaille sur des données \textbf{non étiquetées}. L'objectif est de découvrir des structures, des regroupements ou des motifs cachés dans les données.
+
+\subsection{Clustering}
+
+Le clustering consiste à partitionner les observations en groupes (clusters) de telle sorte que les observations au sein d'un même groupe soient similaires entre elles.
+
+\subsubsection{K-Means}
+L'algorithme K-means partitionne les $n$ observations en $K$ clusters en minimisant~:
+\[
+  \min_{C_1,\ldots,C_K} \sum_{k=1}^{K} \sum_{x_i \in C_k} \|x_i - \mu_k\|^2
+\]
+où $\mu_k$ est le centroïde du cluster $C_k$.
+
+\subsubsection{Clustering Hiérarchique}
+Construit une hiérarchie de regroupements (ascendante ou descendante), représentée sous forme de dendrogramme.
+
+\subsubsection{DBSCAN}
+Identifie les clusters comme des zones de forte densité séparées par des zones de faible densité. Ne nécessite pas de spécifier le nombre de clusters à l'avance et peut détecter des clusters de formes arbitraires.
+
+\subsection{Réduction de Dimensionnalité}
+
+\begin{itemize}[leftmargin=1.5cm, itemsep=4pt]
+  \item \textbf{ACP (Analyse en Composantes Principales)}~: technique linéaire qui projette les données sur les axes de variance maximale.
+  \item \textbf{t-SNE}~: technique non-linéaire particulièrement adaptée à la visualisation de données en haute dimension, préservant les voisinages locaux.
+  \item \textbf{UMAP}~: plus rapide que t-SNE, tout aussi performant pour révéler des structures de clusters.
+\end{itemize}
+
+%--------------------------------------------------
+\section{Réseaux de Neurones et Deep Learning}
+
+Les réseaux de neurones artificiels sont des modèles inspirés du fonctionnement biologique du cerveau humain, composés de neurones artificiels organisés en couches successives.
+
+\subsection{Architecture d'un réseau de neurones}
+
+Un réseau de neurones se compose typiquement de trois types de couches~:
+\begin{itemize}[leftmargin=1.5cm]
+  \item \textbf{Couche d'entrée}~: reçoit les variables d'entrée $x_1, x_2, \ldots, x_p$.
+  \item \textbf{Couches cachées}~: effectuent des transformations successives. Pour chaque neurone $j$~:
+  \[a_j = \sigma\!\left(\sum_i w_{ij}\,a_i + b_j\right)\]
+  où $\sigma$ est la fonction d'activation (ReLU, sigmoïde, tanh).
+  \item \textbf{Couche de sortie}~: produit la prédiction finale.
+\end{itemize}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.75\textwidth]{chap2_neural_network.png}
+  \caption{Architecture d'un réseau de neurones artificiel multicouche (MLP)}
+  \label{fig:neural-network}
+\end{figure}
+
+\subsection{Apprentissage par rétropropagation}
+
+L'entraînement repose sur l'algorithme de \textbf{rétropropagation} (\textit{backpropagation}), qui calcule le gradient de la fonction de perte par rapport à chaque poids du réseau, en appliquant la règle de dérivation en chaîne. Les poids sont ajustés via la descente de gradient stochastique (SGD) et ses variantes (Adam, RMSProp).
+
+\subsection{Principales architectures de deep learning}
+
+\begin{table}[H]
+\centering
+\caption{Principales architectures de réseaux de neurones profonds}
+\label{tab:architectures-dl}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabularx}{\textwidth}{|>{\bfseries}p{3cm}|p{4cm}|X|}
+\hline
+\rowcolor{maingreen!15}\textbf{Architecture} & \textbf{Principe} & \textbf{Applications typiques} \\
+\hline
+MLP (Perceptron multicouche) & Réseau entièrement connecté & Régression/classification sur données tabulaires \\
+\hline
+CNN (Réseau convolutif) & Filtres de convolution pour motifs spatiaux & Reconnaissance d'images, images satellitaires \\
+\hline
+RNN / LSTM & Mémoire des étapes précédentes & Séries temporelles, données climatiques \\
+\hline
+Transformers & Mécanisme d'attention à longue portée & NLP, prévisions multimodales, LLM \\
+\hline
+\end{tabularx}
+\end{table}
+
+%--------------------------------------------------
+\section{Critères de Choix d'un Modèle}
+
+Le choix du modèle d'IA le plus adapté dépend de plusieurs facteurs à évaluer conjointement~:
+
+\begin{table}[H]
+\centering
+\caption{Critères de choix d'un modèle d'IA}
+\label{tab:criteres-choix}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabularx}{\textwidth}{|>{\bfseries}p{3cm}|X|}
+\hline
+\rowcolor{maingreen!15}\textbf{Critère} & \textbf{Influence sur le choix} \\
+\hline
+Nature de la tâche & Régression, classification, clustering ou détection d'anomalies. \\
+\hline
+Volume de données & Le deep learning requiert de grands volumes~; les modèles classiques fonctionnent avec des jeux restreints. \\
+\hline
+Type de données & Données tabulaires, images, textes ou séries temporelles. Chaque type favorise des architectures spécifiques. \\
+\hline
+Interprétabilité & Dans les domaines sensibles, la capacité à expliquer les prédictions peut être déterminante. \\
+\hline
+Performance attendue & Le niveau de précision requis influence le compromis entre modèles simples et complexes. \\
+\hline
+Ressources disponibles & La puissance de calcul, le temps d'entraînement et l'expertise technique contraignent le choix. \\
+\hline
+\end{tabularx}
+\end{table}
+
+En pratique, il est recommandé de commencer par un modèle simple (\textit{baseline}), puis d'explorer progressivement des modèles plus complexes en évaluant les gains de performance par rapport au coût additionnel en complexité et en ressources.
+
+%--------------------------------------------------
+\section{Conclusion}
+
+Ce chapitre a dressé un panorama des principaux modèles d'IA, en distinguant les approches supervisées (régression, classification), non supervisées (clustering, réduction de dimensionnalité) et les architectures de deep learning. Il a montré que chaque famille de modèles présente des forces et des limites qui rendent le choix du modèle indissociable de la compréhension fine du problème et des données. Le chapitre suivant présentera la méthodologie opérationnelle permettant de mettre en \oe{}uvre ces modèles.
+
+\newpage

@@ -1,0 +1,125 @@
+\chapter{Enjeux, Limites et Perspectives}
+
+\begin{objectifbox}
+Prendre du recul sur les apports des modèles d'IA, leurs limites opérationnelles et les perspectives d'amélioration du projet AgriYield. Ce chapitre aborde également les enjeux éthiques liés à l'utilisation de l'IA dans les systèmes de décision à fort impact sociétal.
+\end{objectifbox}
+
+%--------------------------------------------------
+\section{Apports des Modèles d'IA dans l'Exploitation des Données}
+
+\subsection{Capacité prédictive supérieure}
+
+L'application développée dans le chapitre précédent l'a démontré~: les modèles d'apprentissage automatique (XGBoost, Random Forest) surpassent significativement les approches classiques de régression linéaire, avec un $R^2$ passant de 0.71 à 0.91. Ce gain de performance s'explique par la capacité de ces modèles à capturer des \textbf{interactions non-linéaires} entre les variables climatiques et agronomiques.
+
+\subsection{Automatisation et scalabilité}
+
+Un modèle entraîné peut, une fois déployé, effectuer des centaines de milliers de prédictions par seconde, pour tous les pays et toutes les cultures couverts par le jeu de données, sans nécessiter d'expertise humaine supplémentaire. Cette scalabilité est essentielle pour les applications à l'échelle mondiale.
+
+\subsection{Découverte de connaissances cachées}
+
+L'analyse de l'importance des variables (figure~\ref{fig:feature-importance}) a révélé des informations agronomiquement pertinentes que l'analyse descriptive seule n'aurait pas permis de quantifier~: le poids prépondérant de la pluviométrie, l'effet de seuil de la température, ou encore la relation non-linéaire entre pesticides et rendement.
+
+\subsection{Aide à la décision en temps réel}
+
+La plateforme AgriYield illustre comment les prédictions des modèles peuvent être intégrées dans des systèmes d'alerte et de recommandation, transformant des sorties statistiques abstraites en \textbf{actions concrètes} pour les décideurs agricoles et politiques.
+
+%--------------------------------------------------
+\section{Limites Rencontrées}
+
+\subsection{Limites liées aux données}
+
+\begin{itemize}[leftmargin=1.5cm, itemsep=3pt]
+  \item \textbf{Granularité géographique}~: les données FAO sont agrégées à l'échelle nationale, masquant les disparités régionales importantes (ex.~: régions sahéliennes vs.~zones côtières au Cameroun).
+  \item \textbf{Variables manquantes}~: des facteurs importants ne sont pas inclus~: type de sol, niveau d'irrigation, variétés cultivées, pratiques agricoles, accès aux marchés.
+  \item \textbf{Décalage temporel}~: les données s'arrêtent en 2013, limitant la pertinence des prédictions pour les conditions climatiques actuelles (réchauffement post-2013).
+  \item \textbf{Biais de collecte}~: certains pays ont des systèmes statistiques moins fiables, introduisant une hétérogénéité dans la qualité des données.
+\end{itemize}
+
+\subsection{Limites liées aux modèles}
+
+\begin{itemize}[leftmargin=1.5cm, itemsep=3pt]
+  \item \textbf{Surapprentissage potentiel}~: bien que contrôlé par la validation croisée, le risque demeure pour les cultures et pays peu représentés.
+  \item \textbf{Défaut de causalité}~: les modèles capturent des corrélations statistiques, pas des relations causales. Un modèle qui prédit bien n'explique pas nécessairement pourquoi.
+  \item \textbf{Dérive de distribution (concept drift)}~: les patterns appris sur 1990--2013 peuvent devenir obsolètes face à des changements climatiques accélérés.
+  \item \textbf{Interprétabilité limitée}~: XGBoost et les réseaux de neurones restent des \textit{boîtes noires} par rapport à la régression linéaire, ce qui peut freiner l'adoption par des décideurs non techniques.
+\end{itemize}
+
+%--------------------------------------------------
+\section{Enjeux Éthiques et Sécuritaires}
+
+La figure~\ref{fig:ai-ethics} présente les six piliers de l'IA responsable qui encadrent le déploiement de la plateforme AgriYield.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.62\textwidth]{chap5_ai_ethics.png}
+  \caption{Les six piliers de l'IA Responsable et Éthique pour AgriYield}
+  \label{fig:ai-ethics}
+\end{figure}
+
+\subsection{Confidentialité et souveraineté des données}
+
+Les données agricoles nationales sont des informations stratégiques sensibles. Leur hébergement, leur traitement et leur partage doivent respecter les réglementations nationales et les principes de \textbf{souveraineté des données}. Pour les pays africains, la dépendance à des infrastructures cloud étrangères représente un risque.
+
+\subsection{Équité et biais algorithmiques}
+
+Un modèle entraîné principalement sur des données européennes ou nord-américaines peut être moins performant pour les agricultures africaines sous-représentées. Ces \textbf{biais de représentation} peuvent conduire à des recommandations inadaptées voire contre-productives pour les populations les plus vulnérables.
+
+\subsection{Transparence et responsabilité}
+
+Lorsqu'un modèle d'IA influence des politiques publiques (subventions, aide alimentaire), la capacité à \textbf{expliquer} et \textbf{justifier} les prédictions devient une exigence éthique et réglementaire. Les décideurs doivent pouvoir comprendre les bases d'une recommandation, et un humain doit rester in fine responsable des décisions.
+
+\subsection{Risque de dépendance technologique}
+
+La délégation excessive de la prise de décision agricole à des algorithmes peut appauvrir les connaissances locales des agriculteurs et créer une dépendance à des systèmes dont ils ne maîtrisent ni le fonctionnement ni la maintenance.
+
+%--------------------------------------------------
+\section{Perspectives d'Amélioration}
+
+La figure~\ref{fig:perspectives} présente les cinq axes de développement prioritaires identifiés.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.90\textwidth]{chap5_perspectives.png}
+  \caption{Perspectives et tendances de développement pour AgriYield}
+  \label{fig:perspectives}
+\end{figure}
+
+\subsection{Intégration de données en temps réel}
+
+\begin{itemize}[leftmargin=1.5cm, itemsep=3pt]
+  \item Connexion aux API de prévisions météorologiques (OpenWeather, ERA5) pour mettre à jour les prédictions en continu.
+  \item Intégration d'images satellitaires (Sentinel-2, Landsat) pour surveiller l'état des cultures.
+  \item Déploiement de capteurs IoT sur les parcelles pour des données micro-climatiques locales.
+\end{itemize}
+
+\subsection{Modèles plus avancés}
+
+\begin{itemize}[leftmargin=1.5cm, itemsep=3pt]
+  \item \textbf{LightGBM et CatBoost}~: variantes de gradient boosting plus rapides et plus performantes sur les grandes données.
+  \item \textbf{Réseaux LSTM}~: pour exploiter la dimension temporelle des séries climatiques sur plusieurs années.
+  \item \textbf{Transformers spatiaux}~: pour traiter conjointement les images satellitaires et les données tabulaires.
+  \item \textbf{Apprentissage par transfert}~: pré-entraîner sur des données mondiales, fine-tuner pour chaque pays cible.
+\end{itemize}
+
+\subsection{Explicabilité (XAI)}
+
+Déployer des outils d'explicabilité (\textbf{SHAP}, \textbf{LIME}, \textbf{Partial Dependence Plots}) directement dans l'interface AgriYield, permettant aux utilisateurs non techniques de comprendre les facteurs qui ont conduit à une prédiction spécifique.
+
+\subsection{MLOps et déploiement opérationnel}
+
+\begin{itemize}[leftmargin=1.5cm, itemsep=3pt]
+  \item Mise en place d'un pipeline \textbf{MLOps} avec re-entraînement automatique des modèles quand de nouvelles données FAO sont disponibles.
+  \item Monitoring de la dérive de distribution pour détecter quand les modèles deviennent obsolètes.
+  \item Déploiement d'une API REST pour intégrer AgriYield dans les systèmes d'information des ministères de l'agriculture.
+\end{itemize}
+
+\subsection{Extension géographique et culturelle}
+
+Étendre le périmètre du jeu de données pour couvrir les cultures spécifiques à l'Afrique centrale (manioc, plantain, igname, arachide) et intégrer des données pédologiques africaines afin d'améliorer les performances du modèle pour les pays cibles.
+
+%--------------------------------------------------
+\section{Conclusion}
+
+Ce chapitre a ouvert une réflexion critique sur les forces et les limites de l'approche proposée. Si les modèles d'IA offrent des capacités prédictives indéniables et des perspectives d'aide à la décision prometteuses, ils n'opèrent pas dans un vide éthique ou technique. La qualité des données en entrée, la transparence des algorithmes, l'équité des résultats et la responsabilité humaine dans les décisions finales constituent des conditions non négociables pour un déploiement responsable de l'IA au service de l'agriculture et de la sécurité alimentaire.
+
+\newpage

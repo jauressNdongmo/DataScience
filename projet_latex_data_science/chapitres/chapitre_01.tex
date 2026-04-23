@@ -1,0 +1,239 @@
+\chapter{Fondements Théoriques de l'Exploitation des Données}
+
+\encadreobjectif{Clarifier les notions essentielles liées aux données, à leur cycle de vie et aux contraintes de qualité qui conditionnent la pertinence des analyses. Ce chapitre établit le socle conceptuel sur lequel reposent les modèles et méthodes présentés dans la suite du rapport.}
+
+%--------------------------------------------------
+\section{Introduction}
+
+L'avènement du numérique et la généralisation des systèmes interconnectés ont conduit à une production massive de données de toutes natures. Qu'il s'agisse de transactions financières, de relevés de capteurs industriels, d'images médicales ou de textes issus des réseaux sociaux, la donnée est devenue la matière première d'une nouvelle économie de la connaissance. Cette réalité a profondément transformé les pratiques scientifiques et industrielles, en faisant de la capacité à traiter et à exploiter l'information une compétence stratégique fondamentale.
+
+Dans ce contexte, la science des données s'est constituée en discipline à part entière, à l'intersection des statistiques, de l'informatique et des domaines applicatifs. Son ambition est de transformer des données brutes, souvent incomplètes et hétérogènes, en connaissances exploitables pour la prise de décision. L'intelligence artificielle, et plus particulièrement l'apprentissage automatique, joue dans ce cadre un rôle de premier plan, en fournissant des méthodes capables d'extraire des patterns complexes là où les approches classiques atteignent leurs limites.
+
+Le présent chapitre aborde successivement la notion de donnée et les différentes catégories qui la composent, les objectifs et le cycle de vie de la science des données, les enjeux de qualité et les techniques de préparation, la chaîne générale d'exploitation, et enfin les limites des approches classiques qui motivent le recours aux méthodes d'intelligence artificielle.
+
+%--------------------------------------------------
+\section{Notion de Donnée et Types de Données}
+
+\subsection{Définition et portée conceptuelle}
+
+Dans son acception la plus générale, une \textbf{donnée} est une représentation formelle d'un fait, d'un concept ou d'une observation, susceptible d'être stockée, transmise et traitée par un système informatique. Seule et isolée de tout contexte, elle ne possède pas de signification propre~; c'est l'interprétation et la mise en relation qui lui confèrent le statut d'\textit{information}, puis, par un processus d'intégration et de contextualisation, celui de \textit{connaissance}.
+
+Cette distinction, formalisée dans la \textbf{pyramide DIKW} (\textit{Data, Information, Knowledge, Wisdom}), est fondamentale dans le domaine de l'intelligence artificielle. Un modèle d'apprentissage automatique n'apprend pas directement des faits du monde réel, mais des structures statistiques encodées dans des données. Il en résulte que la qualité, la représentativité et la pertinence des données conditionnent directement la valeur de tout système intelligent qui en est issu.
+
+\subsection{Taxonomie des données selon leur degré de structuration}
+
+La littérature distingue classiquement trois grandes catégories de données selon le degré d'organisation interne que leur format impose.
+
+\subsubsection{Les données structurées}
+
+Les données structurées sont organisées selon un schéma prédéfini et rigide, généralement sous la forme de tables relationnelles dans lesquelles chaque colonne correspond à un attribut typé et chaque ligne à un enregistrement. Leur format fixe facilite considérablement le stockage dans des systèmes de gestion de bases de données relationnelles (SGBDR) et leur interrogation via le langage SQL.
+
+Ces données constituent historiquement la part la plus exploitée dans les systèmes d'information d'entreprise~: bases de données bancaires, registres de patients, fichiers de configuration de capteurs. Leur principal avantage réside dans la facilité avec laquelle elles se prêtent aux analyses statistiques classiques. Dans notre cas d'étude, le jeu de données AgriYield est typiquement structuré~: colonnes \texttt{Area}, \texttt{Item}, \texttt{Year}, \texttt{hg/ha\_yield}, \texttt{average\_rain\_fall\_mm\_per\_year}, etc.
+
+\subsubsection{Les données semi-structurées}
+
+Les données semi-structurées n'obéissent pas à un schéma tabulaire strict, mais possèdent néanmoins une organisation interne sous forme de balises, de clés-valeurs ou de hiérarchies qui facilite leur exploitation automatisée. Les formats les plus répandus sont le JSON, le XML et le YAML. Les bases de données NoSQL orientées document, telles que MongoDB ou CouchDB, sont spécifiquement conçues pour leur gestion.
+
+Ce type de données est particulièrement présent dans les architectures IoT, où les capteurs hétérogènes produisent des flux JSON dont la structure varie selon le modèle de l'appareil. Dans le domaine agricole, les données provenant d'API météorologiques sont fréquemment fournies dans ces formats.
+
+\subsubsection{Les données non structurées}
+
+Les données non structurées ne présentent aucune organisation interne prédéfinie. Elles constituent aujourd'hui la fraction la plus volumineuse de l'ensemble des données produites, estimée à plus de 80\,\% du volume global. Elles comprennent les textes libres, les images, les signaux audio ainsi que les données de graphes.
+
+L'essor de l'apprentissage profond est en grande partie lié à la capacité de ces architectures à extraire des représentations utiles directement depuis des données non structurées, sans nécessiter l'ingénierie manuelle des caractéristiques. Dans le domaine agricole, les \textbf{images satellitaires} utilisées pour évaluer l'état des cultures en sont un exemple représentatif.
+
+\bigskip
+\begin{table}[H]
+\centering
+\caption{Comparaison des trois catégories de données}
+\label{tab:categories-donnees}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabularx}{\textwidth}{|>{\bfseries}p{3cm}|p{3.5cm}|p{3.5cm}|p{4cm}|}
+\hline
+\rowcolor{TableHeader}\textbf{Catégorie} & \textbf{Organisation} & \textbf{Outils de référence} & \textbf{Exemples} \\
+\hline
+Structurées & Schéma fixe, tables relationnelles & SGBDR, SQL & Bases bancaires, CSV AgriYield \\
+\hline
+Semi-structurées & Organisation hiérarchique, schéma flexible & NoSQL, XML/JSON & Flux IoT JSON, logs système \\
+\hline
+Non structurées & Aucune structure prédéfinie & IA, NLP, Vision & Images IRM, vidéos, textes \\
+\hline
+\end{tabularx}
+\end{table}
+
+%--------------------------------------------------
+\section{Science des Données et Exploitation des Données}
+
+\subsection{Définition et périmètre disciplinaire}
+
+La science des données est un domaine interdisciplinaire dont l'objet est l'extraction de connaissances et de valeur à partir de données, en mobilisant conjointement des méthodes issues des statistiques, de l'informatique, de l'algèbre linéaire et des domaines applicatifs concernés. Elle se distingue de la statistique classique par l'importance accordée à l'aspect computationnel et aux volumes de données traités.
+
+Comme l'illustre la figure~\ref{fig:data-science-venn}, la science des données émerge de l'intersection de trois piliers fondamentaux.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.55\textwidth]{chap1_data_science_venn.jpeg}
+  \caption{Les trois piliers de la Science des Données~: Mathématiques, Informatique et Expertise Métier}
+  \label{fig:data-science-venn}
+\end{figure}
+
+\subsection{Les quatre niveaux d'analyse}
+
+L'objectif opérationnel de la science des données est de transformer des données brutes en informations actionnables. Cet objectif se décline selon quatre niveaux d'analyse dont la complexité et la valeur ajoutée croissent progressivement.
+
+\begin{table}[H]
+\centering
+\caption{Les quatre niveaux d'analyse en science des données}
+\label{tab:niveaux-analyse}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabularx}{\textwidth}{|>{\bfseries}p{3cm}|p{3cm}|p{3.5cm}|p{3.8cm}|}
+\hline
+\rowcolor{TableHeader}\textbf{Niveau} & \textbf{Question} & \textbf{Méthodes} & \textbf{Exemple agricole} \\
+\hline
+Descriptive & Que s'est-il passé ? & Statistiques, visualisation & Tableau de bord des rendements par pays \\
+\hline
+Diagnostique & Pourquoi ? & Corrélation, causalité & Causes d'une baisse de rendement \\
+\hline
+Prédictive & Que va-t-il se passer ? & Machine learning, séries temporelles & Prévision du rendement 2025 \\
+\hline
+Prescriptive & Que faut-il faire ? & Optimisation, renforcement & Recommandation d'intrants optimaux \\
+\hline
+\end{tabularx}
+\end{table}
+
+%--------------------------------------------------
+\section{Qualité des Données et Préparation}
+
+La qualité des données est un prérequis essentiel pour la fiabilité des analyses et la pertinence des modèles. Des données de mauvaise qualité conduisent inévitablement à des résultats erronés, selon le principe communément exprimé par l'adage~: \textit{Garbage In, Garbage Out}.
+
+\subsection{Principales pathologies affectant les données}
+
+\subsubsection{Les valeurs manquantes}
+
+Les valeurs manquantes surviennent lorsqu'un attribut n'a pas été renseigné pour un ou plusieurs enregistrements. La théorie de Rubin distingue trois mécanismes~: le mécanisme \textbf{MCAR} (\textit{Missing Completely At Random}), le mécanisme \textbf{MAR} (\textit{Missing At Random}) et le mécanisme \textbf{MNAR} (\textit{Missing Not At Random}), ce dernier étant le plus difficile à traiter car il introduit un biais systématique.
+
+\subsubsection{Les doublons et incohérences}
+
+Les doublons sont des enregistrements identiques ou quasi-identiques représentant la même entité réelle. Ils biaisent les statistiques descriptives et faussent l'entraînement des modèles. Les incohérences sont des contradictions internes au jeu de données, par exemple un rendement agricole négatif ou une température de $-80^\circ$C dans une zone tropicale.
+
+\subsubsection{Le bruit et le déséquilibre des classes}
+
+Le bruit correspond à des variations aléatoires ou des erreurs de mesure. Dans les tâches de classification, le déséquilibre des classes survient lorsque certaines catégories sont fortement sous-représentées, induisant des modèles biaisés.
+
+\subsection{Les techniques de préparation des données}
+
+\begin{table}[H]
+\centering
+\caption{Principales techniques de préparation des données}
+\label{tab:techniques-preparation}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabularx}{\textwidth}{|>{\bfseries}p{3.2cm}|p{4cm}|X|}
+\hline
+\rowcolor{TableHeader}\textbf{Technique} & \textbf{Objectif} & \textbf{Méthodes représentatives} \\
+\hline
+Nettoyage & Corriger les anomalies & Suppression, imputation, détection d'outliers (IQR, Z-score, Isolation Forest) \\
+\hline
+Normalisation & Homogénéiser les échelles & Min-max $[0,1]$, standardisation z-score, normalisation L2 \\
+\hline
+Encodage catégoriel & Convertir les variables qualitatives & One-hot encoding, encodage ordinal, target encoding \\
+\hline
+Ingénierie des attributs & Créer de nouvelles variables & Extraction temporelle, ratios, agrégations glissantes \\
+\hline
+Réduction de dimension & Lutter contre la malédiction de la dimensionnalité & ACP, t-SNE, UMAP, sélection LASSO \\
+\hline
+\end{tabularx}
+\end{table}
+
+%--------------------------------------------------
+\section{Cycle de Vie et Processus d'Exploitation des Données}
+
+\subsection{Le cycle de vie des données}
+
+Le cycle de vie des données décrit l'ensemble des étapes que traversent les données depuis leur création jusqu'à leur archivage. Comme le montre la figure~\ref{fig:cycle-vie}, ce processus est itératif et cyclique, chaque étape alimentant la suivante.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.55\textwidth]{chap1_cycle_vie.jpeg}
+  \caption{Cycle de vie des données~: de la création à la réutilisation}
+  \label{fig:cycle-vie}
+\end{figure}
+
+\subsection{Vue d'ensemble de la chaîne de traitement}
+
+L'exploitation des données s'organise selon une chaîne de traitement structurée autour de cinq maillons fondamentaux~:
+
+\begin{enumerate}[leftmargin=1.5cm, itemsep=4pt]
+  \item \textbf{Collecte}~: acquisition des données depuis des sources variées (bases institutionnelles, capteurs, APIs, fichiers CSV).
+  \item \textbf{Nettoyage}~: détection et correction des anomalies, traitement des valeurs manquantes, suppression des doublons.
+  \item \textbf{Transformation}~: mise en forme des données pour les rendre compatibles avec les algorithmes (encodage, normalisation, \textit{feature engineering}).
+  \item \textbf{Analyse}~: application de méthodes statistiques ou de modèles d'apprentissage automatique pour extraire des patterns et prédictions.
+  \item \textbf{Valorisation}~: restitution des résultats sous forme de visualisations, tableaux de bord ou systèmes d'aide à la décision.
+\end{enumerate}
+
+Ce processus est rarement linéaire~; il implique généralement des itérations et des retours en arrière, formalisés par la méthodologie \textbf{CRISP-DM} (\textit{Cross-Industry Standard Process for Data Mining}).
+
+%--------------------------------------------------
+\section{Limites des Approches Classiques et Nécessité de l'IA}
+
+\subsection{Le contexte du Big Data}
+
+Les approches classiques d'analyse des données ont démontré leur utilité pendant plusieurs décennies. Cependant, elles atteignent aujourd'hui des limites structurelles face aux caractéristiques des données contemporaines, résumées par le modèle des \textbf{cinq V du Big Data}, illustré à la figure~\ref{fig:big-data-5v}.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.60\textwidth]{chap1_big_data_5v.jpeg}
+  \caption{Les cinq dimensions critiques du Big Data}
+  \label{fig:big-data-5v}
+\end{figure}
+
+\begin{itemize}[leftmargin=1.5cm, itemsep=3pt]
+  \item \textbf{Volume}~: explosion quantitative des données (plusieurs exaoctets quotidiens) dépassant toute capacité de traitement manuel.
+  \item \textbf{Variété}~: multiplicité des types et formats de données rendant inapplicable tout schéma d'analyse uniforme.
+  \item \textbf{Vélocité}~: vitesse à laquelle les données sont générées et doivent être traitées en temps réel.
+  \item \textbf{Véracité}~: incertitude et imperfection inhérentes aux données réelles.
+  \item \textbf{Valeur}~: la valeur économique doit être construite par des méthodes de découverte automatique de patterns.
+\end{itemize}
+
+\subsection{Limites analytiques des méthodes traditionnelles}
+
+\subsubsection{La supposition de linéarité}
+Les méthodes statistiques classiques les plus employées (régression linéaire, ANOVA) reposent sur l'hypothèse de relations linéaires. Or, la grande majorité des phénomènes réels sont régis par des dynamiques non-linéaires que ces modèles sont structurellement incapables de capturer.
+
+\subsubsection{La malédiction de la dimensionnalité}
+Lorsque le nombre d'attributs croît au-delà de quelques dizaines, les observations deviennent toutes équidistantes et les méthodes basées sur la distance perdent toute signification.
+
+\subsubsection{L'incapacité à traiter les données non structurées}
+Les méthodes classiques sont fondamentalement incapables d'analyser des images, des textes libres ou des signaux audio sans une étape préalable d'extraction manuelle de caractéristiques.
+
+\subsection{L'apport de l'intelligence artificielle}
+
+Face à ces limitations, l'intelligence artificielle apporte des capacités nouvelles~:
+
+\begin{table}[H]
+\centering
+\caption{Positionnement de l'IA dans la chaîne d'exploitation des données}
+\label{tab:positionnement-ia}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabularx}{\textwidth}{|>{\bfseries}p{2.5cm}|p{4cm}|X|}
+\hline
+\rowcolor{TableHeader}\textbf{Étape} & \textbf{Apport de l'IA} & \textbf{Méthodes représentatives} \\
+\hline
+Collecte & Acquisition intelligente & Active learning, crawlers neuronaux \\
+\hline
+Nettoyage & Détection automatique d'anomalies & Isolation Forest, autoencodeurs \\
+\hline
+Transformation & Apprentissage de représentations & Autoencodeurs, t-SNE, embeddings \\
+\hline
+Analyse & Modélisation prédictive, clustering & XGBoost, LSTM, CNN, Transformer \\
+\hline
+Valorisation & Aide à la décision, agents & LLM, apprentissage par renforcement \\
+\hline
+\end{tabularx}
+\end{table}
+
+%--------------------------------------------------
+\section{Conclusion}
+
+Ce premier chapitre a posé les fondements théoriques sur lesquels reposera l'ensemble de la démarche développée dans ce rapport. Nous avons établi que la donnée, dans sa pluralité de formes, constitue la matière première de toute démarche de science des données, et que sa qualité en conditionne directement la valeur. Le chapitre suivant approfondira les principales familles d'algorithmes d'apprentissage automatique.
+
+\newpage
